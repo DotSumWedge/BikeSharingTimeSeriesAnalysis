@@ -1,0 +1,118 @@
+---
+title: "Bike Sharing Analysis, Time Series Final Project"
+author: "Derek Rogers and Sakava Kiv"
+date: "2024-04-06"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+library(tswge)
+library(PolynomF)
+library(tidyverse)
+library(GGally)
+library(astsa)
+library(vars)
+library(nnfor)
+```
+
+```{r}
+# Set the working directory to the specified path
+setwd("C:/SMU MS Data Science/TimeSeries/FinalProject")
+
+# Check to confirm that the working directory has been set correctly
+getwd()
+```
+
+```{r}
+# The chosen data set is the bike_sharing_dataset.csv from kaggle: https://www.kaggle.com/datasets/juliajemals/bike-sharing-washington-dc
+# The chosen response variable is total_cust
+# Being able to model and predict total_cust can help entities directly involved or adjacent to bike sharing better understand and predict the varying demand to avoid oversupply or shortages. Forecasting future demand can help plan bike maintance as heavily used bikes break down more often. This information can help inform business decisions, setting prices, and creating efective advertisements. 
+
+BikeSharing = read.csv("bike_sharing_dataset.csv", header = TRUE)
+BikeSharing_train = data.frame(TotalCust = ts(BikeSharing$total_cust))
+
+head(BikeSharing)
+nrow(BikeSharing)
+
+# There are 4 consecutive missing values
+which(is.na(BikeSharing$total_cust))
+```
+
+```{r}
+# Impute the 4 consecutive missing values with the average of the value before and after the missing values
+
+# Calculate the average of the values at positions 1848 and 1853
+average_value = mean(c(BikeSharing$total_cust[1848], BikeSharing$total_cust[1853]), na.rm = TRUE)
+average_value
+
+# Assign the average value to the missing positions 1849, 1850, 1851, and 1852
+BikeSharing$total_cust[1849:1852] = average_value
+
+# Optionally, you can verify the imputation by checking the values at these positions
+BikeSharing$total_cust[1848:1853]
+
+# Plot around where the imputed values are
+plot(BikeSharing$total_cust[1838:1863], type = "l")
+```
+
+```{r}
+# Plot the full dataset
+
+# The realization plot shows strong periodic trends, wandering behavior, and variance that changes over time.
+
+# We see slowly dampening autocorrelation with weak and an irregular length periodic behavior.
+
+# There is a peak at zero in the parzen frequency window.
+# The parzen window also shows a peak around 0.15, which is a period of 1/0.15 = 6.666. 
+#   B/c this data is collected daily, there evidence to suggest a weekly trend.
+#   We can hypothesize total_cust could have a greater total_cust on the weekends when all other variables are held constant. 
+plotts.sample.wge(BikeSharing$total_cust)
+```
+
+```{r}
+# Top AIC was p = 9, q = 4, so we will go with this model
+aic5.wge(BikeSharing$total_cust, p = 0:12, q = 0:4)
+```
+
+```{r}
+# Find ASE for a 6 month forecast
+fit_arma = est.arma.wge(BikeSharing$total_cust, p = 9, q = 4)
+preds_arma = fore.arma.wge(BikeSharing$total_cust,
+    phi = fit_arma$phi, theta = fit_arma$theta, n.ahead = 182,
+    lastn = TRUE, limits = FALSE)
+```
+
+```{r}
+ASE = mean((tail(BikeSharing$total_cust, 182) - preds_arma$f)^2)
+ASE
+```
+
+```{r}
+# Find ASE for a 1 week forecast
+fit_arma = est.arma.wge(BikeSharing$total_cust, p = 9, q = 4)
+preds_arma = fore.arma.wge(BikeSharing$total_cust,
+    phi = fit_arma$phi, theta = fit_arma$theta, n.ahead = 7,
+    lastn = TRUE, limits = FALSE)
+```
+
+```{r}
+ASE = mean((tail(BikeSharing$total_cust, 7) - preds_arma$f)^2)
+ASE
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
