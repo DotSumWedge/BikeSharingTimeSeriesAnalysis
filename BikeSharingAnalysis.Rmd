@@ -22,7 +22,7 @@ library(nnfor)
 
 ```{r}
 # Set the working directory to the specified path
-setwd("C:/SMU MS Data Science/TimeSeries/FinalProject")
+setwd("C:/SMU MS Data Science/TimeSeries/FinalProject/BikeSharingTimeSeriesAnalysis")
 
 # Check to confirm that the working directory has been set correctly
 getwd()
