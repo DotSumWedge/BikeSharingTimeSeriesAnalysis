@@ -175,7 +175,7 @@ print(ASE)
 
 # MLP Model
 ```{r}
-fit_mlp = mlp(ts(BikeSharingSmall$total_cust), reps = 50, comb = "median", xreg = BikeSharingDF)
+fit_mlp = mlp(ts(BikeSharingSmall$total_cust), reps = 20, comb = "median", xreg = BikeSharingDF)
 ```
 
 ```{r}
