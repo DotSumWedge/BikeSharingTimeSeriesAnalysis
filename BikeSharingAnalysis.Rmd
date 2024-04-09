@@ -71,8 +71,150 @@ plot(BikeSharing$total_cust[1838:1863], type = "l")
 # The parzen window also shows a peak around 0.15, which is a period of 1/0.15 = 6.666. 
 #   B/c this data is collected daily, there evidence to suggest a weekly trend.
 #   We can hypothesize total_cust could have a greater total_cust on the weekends when all other variables are held constant. 
-plotts.sample.wge(BikeSharing$total_cust)
+plotts.sample.wge(BikeSharing$total_cust, arlimits = TRUE)
 ```
+
+```{r}
+# Transform data based off of Sakavas analysis
+b7 = artrans.wge(BikeSharing$total_cust, phi.tr = c(rep(0, 6), 1))
+b7
+b365 = artrans.wge(BikeSharing$total_cust, phi.tr = c(rep(0, 364), 1))
+b365
+b365_7 = artrans.wge(b365, phi.tr = c(rep(0, 6), 1))
+b365_7
+
+plotts.sample.wge(b365_7, arlimits = TRUE)
+```
+
+# ARMA/ARIMA Modle
+
+```{r}
+fit_365_7 = est.ar.wge(b7_365, p = 8)
+
+preds_arma_7 = fore.arma.wge(BikeSharing$total_cust,
+    phi = fit_365_7$phi, n.ahead = 7,
+    lastn = TRUE, limits = FALSE)
+
+preds_arma_182 = fore.arma.wge(BikeSharing$total_cust,
+    phi = fit_365_7$phi, n.ahead = 182,
+    lastn = TRUE, limits = FALSE)
+```
+
+```{r}
+ASE_7 = mean((tail(BikeSharing$total_cust, 7) - preds_arma_7$f)^2)
+ASE_7
+
+ASE_182 = mean((tail(BikeSharing$total_cust, 182) - preds_arma_182$f)^2)
+ASE_182
+```
+
+```{r}
+plotts.sample.wge(fit_365_7$res, arlimits = TRUE)
+```
+
+# VAR Model
+
+```{r}
+head(BikeSharing)
+```
+
+```{r}
+colnames(BikeSharing)
+which(is.na(BikeSharing$temp_min))
+```
+
+```{r}
+no_missing_values <- apply(BikeSharing, 2, function(x) all(complete.cases(x)))
+columns_no_missing <- names(BikeSharing)[no_missing_values]
+
+# All columns
+colnames(BikeSharing)
+# Columns with no missing values
+print(columns_no_missing)
+# date, total_cust, temp_min, temp_max, temp_observ, precip, wind
+```
+
+```{r}
+# Select columns with no missing values excluding 'date'
+variables = c("total_cust", "temp_min", "temp_max", "temp_observ", "precip", "wind")
+BikeSharingSelected = BikeSharing[variables]
+
+# Leave out the last 182 values for the ASE calculation
+BikeSharingSmall = head(BikeSharingSelected, -182)
+
+# Prepare the data for the VAR model
+BikeSharingDF = data.frame(BikeSharingSmall[,-1]) # Exclude 'total_cust' for independent variables
+TotalCust = BikeSharingSmall$total_cust
+```
+
+```{r}
+# Create the VAR model
+VAR_BikeSharing = VAR(cbind(TotalCust, BikeSharingDF), lag.max = 5, type = "both")
+
+# Prediction
+pred = predict(VAR_BikeSharing, n.ahead = 182)
+```
+
+```{r}
+# Plot the actual vs predicted 'total_cust'
+plot(BikeSharing$total_cust, type = "l", main = "Total Customers: Actual vs Predicted", xlab = "Time", ylab = "Total Customers")
+lines((nrow(BikeSharing) - 181):nrow(BikeSharing), pred$fcst$TotalCust[,1], col = "red")
+```
+
+```{r}
+# Plot the actual vs predicted 'total_cust' zoomed in on the last 1/6th of the timeline
+plot(BikeSharing$total_cust, type = "l", main = "Total Customers: Actual vs Predicted", xlab = "Time", ylab = "Total Customers", xlim = c(2500, nrow(BikeSharing)))
+lines((nrow(BikeSharing) - 181):nrow(BikeSharing), pred$fcst$TotalCust[,1], col = "red")
+```
+
+```{r}
+# Calculate the Average Squared Error (ASE) for the prediction
+ASE = mean((tail(BikeSharing$total_cust, 182) - pred$fcst$TotalCust[,1])^2)
+print(ASE)
+```
+
+# MLP Model
+```{r}
+fit_mlp = mlp(ts(BikeSharingSmall$total_cust), reps = 50, comb = "median", xreg = BikeSharingDF)
+```
+
+```{r}
+plot(fit_mlp)
+```
+
+```{r}
+fore_mlp = forecast(fit_mlp, h  = 182, xreg = BikeSharingSmall)
+```
+
+```{r}
+plot(fore_mlp)
+```
+
+```{r}
+# Plot the actual 'total_cust' values
+plot(BikeSharing$total_cust, type = "l", main = "Total Customers: Actual vs Predicted", xlab = "Time", ylab = "Total Customers", xlim = c(2500, nrow(BikeSharing)))
+
+# Add the MLP forecasted 'total_cust' values
+lines((nrow(BikeSharing) - 181):nrow(BikeSharing), fore_mlp$mean, col = "blue")
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+# APPENDIX
 
 ```{r}
 # Top AIC was p = 9, q = 4, so we will go with this model
@@ -103,16 +245,4 @@ preds_arma = fore.arma.wge(BikeSharing$total_cust,
 ```{r}
 ASE = mean((tail(BikeSharing$total_cust, 7) - preds_arma$f)^2)
 ASE
-```
-
-```{r}
-
-```
-
-```{r}
-
-```
-
-```{r}
-
 ```
