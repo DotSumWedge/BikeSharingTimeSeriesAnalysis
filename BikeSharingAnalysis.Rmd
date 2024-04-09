@@ -89,7 +89,7 @@ plotts.sample.wge(b365_7, arlimits = TRUE)
 # ARMA/ARIMA Modle
 
 ```{r}
-fit_365_7 = est.ar.wge(b7_365, p = 8)
+fit_365_7 = est.ar.wge(b365_7, p = 8)
 
 preds_arma_7 = fore.arma.wge(BikeSharing$total_cust,
     phi = fit_365_7$phi, n.ahead = 7,
@@ -124,8 +124,8 @@ which(is.na(BikeSharing$temp_min))
 ```
 
 ```{r}
-no_missing_values <- apply(BikeSharing, 2, function(x) all(complete.cases(x)))
-columns_no_missing <- names(BikeSharing)[no_missing_values]
+no_missing_values = apply(BikeSharing, 2, function(x) all(complete.cases(x)))
+columns_no_missing = names(BikeSharing)[no_missing_values]
 
 # All columns
 colnames(BikeSharing)
