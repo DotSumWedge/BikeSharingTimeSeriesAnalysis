@@ -175,7 +175,13 @@ print(ASE)
 
 # MLP Model
 ```{r}
-fit_mlp = mlp(ts(BikeSharingSmall$total_cust), reps = 20, comb = "median", xreg = BikeSharingDF)
+# Exclude the first 2,000 values from BikeSharingSmall and BikeSharingDF
+BikeSharingSmallAdjusted = BikeSharingSmall[-(1:2000), ]
+BikeSharingDFAdjusted = BikeSharingDF[-(1:2000), ]
+
+# Now, use BikeSharingSmallAdjusted for the MLP model
+fit_mlp = mlp(ts(BikeSharingSmallAdjusted$total_cust), reps = 7, comb = "median", xreg = BikeSharingDFAdjusted)
+
 ```
 
 ```{r}
@@ -183,7 +189,7 @@ plot(fit_mlp)
 ```
 
 ```{r}
-fore_mlp = forecast(fit_mlp, h  = 182, xreg = BikeSharingSmall)
+fore_mlp = forecast(fit_mlp, h  = 182, xreg = BikeSharingSmallAdjusted)
 ```
 
 ```{r}
