@@ -1,0 +1,81 @@
+---
+title: "Bike Sharing Analysis, Time Series Final Project"
+author: "Derek Rogers and Sakava Kiv"
+date: "2024-04-06"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+library(tswge)
+library(PolynomF)
+library(tidyverse)
+library(GGally)
+library(astsa)
+library(vars)
+library(nnfor)
+```
+
+```{r}
+# Set the working directory to the specified path
+setwd("C:/SMU MS Data Science/TimeSeries/FinalProject/BikeSharingTimeSeriesAnalysis")
+
+# Check to confirm that the working directory has been set correctly
+getwd()
+```
+
+```{r}
+# The chosen data set is the bike_sharing_dataset.csv from kaggle: https://www.kaggle.com/datasets/juliajemals/bike-sharing-washington-dc
+# The chosen response variable is total_cust
+# Being able to model and predict total_cust can help entities directly involved or adjacent to bike sharing better understand and predict the varying demand to avoid oversupply or shortages. Forecasting future demand can help plan bike maintance as heavily used bikes break down more often. This information can help inform business decisions, setting prices, and creating efective advertisements. 
+
+BikeSharing = read.csv("bike_sharing_dataset.csv", header = TRUE)
+BikeSharing_train = data.frame(TotalCust = ts(BikeSharing$total_cust))
+
+# Impute the 4 consecutive missing values with the average of the value before and after the missing values
+
+# Calculate the average of the values at positions 1848 and 1853
+average_value = mean(c(BikeSharing$total_cust[1848], BikeSharing$total_cust[1853]), na.rm = TRUE)
+average_value
+
+# Assign the average value to the missing positions 1849, 1850, 1851, and 1852
+BikeSharing$total_cust[1849:1852] = average_value
+
+# Optionally, you can verify the imputation by checking the values at these positions
+BikeSharing$total_cust[1848:1853]
+
+no_missing_values = apply(BikeSharing, 2, function(x) all(complete.cases(x)))
+columns_no_missing = names(BikeSharing)[no_missing_values]
+
+# Select columns with no missing values excluding 'date'
+variables = c("total_cust", "temp_min", "temp_max", "temp_observ", "precip", "wind")
+BikeSharingSelected = BikeSharing[variables]
+
+# Leave out the last 182 values for the ASE calculation
+BikeSharingSmall = head(BikeSharingSelected, -182)
+
+# Prepare the data for the VAR model
+BikeSharingDF = data.frame(BikeSharingSmall[,-1]) # Exclude 'total_cust' for independent variables
+TotalCust = BikeSharingSmall$total_cust
+
+# Exclude the first 2,500 values from BikeSharingSmall and BikeSharingDF
+BikeSharingSmallAdjusted = BikeSharingSmall[-(1:2400), ]
+BikeSharingDFAdjusted = BikeSharingDF[-(1:2400), ]
+fit_mlp = mlp(ts(BikeSharingSmallAdjusted$total_cust), reps = 7, comb = "median", xreg = BikeSharingDFAdjusted)
+
+fore_mlp = forecast(fit_mlp, h = 182, xreg = BikeSharingSelected[-(1:2400), -1])
+
+# Plot the actual 'total_cust' values
+plot(BikeSharing$total_cust, type = "l", main = "Total Customers: Actual vs Predicted", xlab = "Time", ylab = "Total Customers", xlim = c(2500, nrow(BikeSharing)))
+
+# Add the MLP forecasted 'total_cust' values
+lines((nrow(BikeSharing) - 181):nrow(BikeSharing), fore_mlp$mean, col = "red")
+```
+
+```{r}
+# TODO: Calculate ASE and rwRMSE for short a long term forecasts
+```

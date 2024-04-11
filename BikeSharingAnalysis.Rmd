@@ -175,24 +175,16 @@ print(ASE)
 
 # MLP Model
 ```{r}
-# Exclude the first 2,500 values from BikeSharingSmall and BikeSharingDF
-BikeSharingSmallAdjusted = BikeSharingSmall[-(1:2500), ]
-BikeSharingDFAdjusted = BikeSharingDF[-(1:2500), ]
-BikeSharingDFAdjusted_ts = ts(BikeSharingDFAdjusted, start = start(BikeSharingSmallAdjusted$total_cust)[1], frequency = frequency(BikeSharingSmallAdjusted$total_cust))
-
-fit_mlp = mlp(ts(BikeSharingSmallAdjusted$total_cust), reps = 7, comb = "median", xreg = BikeSharingDFAdjusted_ts)
+# Exclude the first 2,400 values from BikeSharingSmall and BikeSharingDF
+BikeSharingSmallAdjusted = BikeSharingSmall[-(1:2400), ]
+BikeSharingDFAdjusted = BikeSharingDF[-(1:2400), ]
+fit_mlp = mlp(ts(BikeSharingSmallAdjusted$total_cust), reps = 7, comb = "median", xreg = BikeSharingDFAdjusted)
 
 plot(fit_mlp)
 ```
 
 ```{r}
-plot(fit_mlp)
-```
-
-```{r}
-future_xreg = ts(matrix(nrow = 182, ncol = ncol(BikeSharingDFAdjusted)), start = end(BikeSharingSmallAdjusted$total_cust)[1] + 1/frequency(BikeSharingSmallAdjusted$total_cust), frequency = frequency(BikeSharingSmallAdjusted$total_cust))
-fore_mlp = forecast(fit_mlp, h = 182, xreg = future_xreg)
-plot(fore_mlp)
+fore_mlp = forecast(fit_mlp, h = 182, xreg = BikeSharingSelected[-(1:2400), -1])
 ```
 
 ```{r}
@@ -204,11 +196,7 @@ plot(fore_mlp)
 plot(BikeSharing$total_cust, type = "l", main = "Total Customers: Actual vs Predicted", xlab = "Time", ylab = "Total Customers", xlim = c(2500, nrow(BikeSharing)))
 
 # Add the MLP forecasted 'total_cust' values
-lines((nrow(BikeSharing) - 181):nrow(BikeSharing), fore_mlp$mean, col = "blue")
-```
-
-```{r}
-
+lines((nrow(BikeSharing) - 181):nrow(BikeSharing), fore_mlp$mean, col = "red")
 ```
 
 ```{r}
