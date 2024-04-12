@@ -152,25 +152,29 @@ TotalCust = BikeSharingSmall$total_cust
 VAR_BikeSharing = VAR(cbind(TotalCust, BikeSharingDF), lag.max = 5, type = "both")
 
 # Prediction
-pred_VAR = predict(VAR_BikeSharing, n.ahead = 182)
+pred_VAR_182 = predict(VAR_BikeSharing, n.ahead = 182)
+pred_VAR_7 = predict(VAR_BikeSharing, n.ahead = 7)
 ```
 
 ```{r}
 # Plot the actual vs predicted 'total_cust'
 plot(BikeSharing$total_cust, type = "l", main = "Total Customers: Actual vs Predicted", xlab = "Time", ylab = "Total Customers")
-lines((nrow(BikeSharing) - 181):nrow(BikeSharing), pred_VAR$fcst$TotalCust[,1], col = "red")
+lines((nrow(BikeSharing) - 181):nrow(BikeSharing), pred_VAR_182$fcst$TotalCust[,1], col = "red")
 ```
 
 ```{r}
 # Plot the actual vs predicted 'total_cust' zoomed in on the last 1/6th of the timeline
 plot(BikeSharing$total_cust, type = "l", main = "Total Customers: Actual vs Predicted", xlab = "Time", ylab = "Total Customers", xlim = c(2500, nrow(BikeSharing)))
-lines((nrow(BikeSharing) - 181):nrow(BikeSharing), pred_VAR$fcst$TotalCust[,1], col = "red")
+lines((nrow(BikeSharing) - 181):nrow(BikeSharing), pred_VAR_182$fcst$TotalCust[,1], col = "red")
 ```
 
 ```{r}
 # Calculate the Average Squared Error (ASE) for the prediction
-ASE_VAR = mean((tail(BikeSharing$total_cust, 182) - pred_VAR$fcst$TotalCust[,1])^2)
-print(ASE_VAR)
+ASE_VAR_182 = mean((tail(BikeSharing$total_cust, 182) - pred_VAR_182$fcst$TotalCust[,1])^2)
+print(ASE_VAR_182)
+
+ASE_VAR_7 = mean((tail(BikeSharing$total_cust, 7) - pred_VAR_7$fcst$TotalCust[,1])^2)
+print(ASE_VAR_7)
 ```
 
 # MLP Model
@@ -184,11 +188,12 @@ plot(fit_mlp)
 ```
 
 ```{r}
-fore_mlp = forecast(fit_mlp, h = 182, xreg = BikeSharingSelected[-(1:2300), -1])
+fore_mlp_182 = forecast(fit_mlp, h = 182, xreg = BikeSharingSelected[-(1:2300), -1])
+fore_mlp_7 = forecast(fit_mlp, h = 7, xreg = BikeSharingSelected[-(1:2300), -1])
 ```
 
 ```{r}
-plot(fore_mlp)
+plot(fore_mlp_182)
 ```
 
 ```{r}
@@ -196,30 +201,41 @@ plot(fore_mlp)
 plot(BikeSharing$total_cust, type = "l", main = "Total Customers: Actual vs Predicted", xlab = "Time", ylab = "Total Customers", xlim = c(2500, nrow(BikeSharing)))
 
 # Add the MLP forecasted 'total_cust' values
-lines((nrow(BikeSharing) - 181):nrow(BikeSharing), fore_mlp$mean, col = "red")
+lines((nrow(BikeSharing) - 181):nrow(BikeSharing), fore_mlp_182$mean, col = "red")
 ```
 
 ```{r}
-ASE_mlp = mean((tail(BikeSharing$total_cust, 182) - fore_mlp$mean)^2)
-print(ASE_mlp)
+ASE_mlp_182 = mean((tail(BikeSharing$total_cust, 182) - fore_mlp_182$mean)^2)
+print(ASE_mlp_182)
+
+ASE_mlp_7 = mean((tail(BikeSharing$total_cust, 7) - fore_mlp_7$mean)^2)
+print(ASE_mlp_7)
 ```
 
 # Ensemble
 
 ```{r}
 #Ensemble
-ensemble = (preds_arma_182$f + pred_VAR$fcst$TotalCust[, 1] + fore_mlp$mean) / 3
+ensemble_182 = (preds_arma_182$f + pred_VAR_182$fcst$TotalCust[, 1] + fore_mlp_182$mean) / 3
 
 #Plot
 plot(BikeSharing$total_cust, type = "l", xlim = c(2500, nrow(BikeSharing)), ylab = "Total Customers: Actual vs Predicted", main = "26 Week Customer Forecast")
-lines(seq(457,508,1), ensemble, type = "l", col = "red")
+lines((nrow(BikeSharing) - 181):nrow(BikeSharing), ensemble_182, type = "l", col = "red")
 
-ASE_ensemble = mean((tail(BikeSharing$total_cust, 182) - ensemble)^2)
-ASE_ensemble
+ASE_ensemble_182 = mean((tail(BikeSharing$total_cust, 182) - ensemble_182)^2)
+ASE_ensemble_182
 ```
 
 ```{r}
+#Ensemble
+ensemble_7 = (preds_arma_7$f + pred_VAR_7$fcst$TotalCust[, 1] + fore_mlp_7$mean) / 3
 
+#Plot
+plot(BikeSharing$total_cust, type = "l", xlim = c(2800, nrow(BikeSharing)), ylab = "Total Customers: Actual vs Predicted", main = "1 Week Customer Forecast")
+lines((nrow(BikeSharing) - 6):nrow(BikeSharing), ensemble_7, type = "l", col = "red")
+
+ASE_ensemble_7 = mean((tail(BikeSharing$total_cust, 7) - ensemble_7)^2)
+ASE_ensemble_7
 ```
 
 ```{r}
