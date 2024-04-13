@@ -18,6 +18,7 @@ library(GGally)
 library(astsa)
 library(vars)
 library(nnfor)
+library(dplyr)
 ```
 
 ```{r}
@@ -75,6 +76,17 @@ plotts.sample.wge(BikeSharing$total_cust, arlimits = TRUE)
 ```
 
 ```{r}
+# The CCF plot shows a log of 1 for precipitation. This makes sense a we might expect less people to rent a bike the day after it rains.
+ccf(BikeSharing$precip, BikeSharing$total_cust)
+```
+
+```{r}
+BikeSharing$precip_L1 = dplyr::lag(BikeSharing$precip, 1)
+BikeSharing$precip_L1[is.na(BikeSharing$precip_L1)] = median(BikeSharing$precip_L1, na.rm = TRUE)
+head(BikeSharing)
+```
+
+```{r}
 # Transform data based off of Sakavas analysis
 b7 = artrans.wge(BikeSharing$total_cust, phi.tr = c(rep(0, 6), 1))
 b7
@@ -86,6 +98,10 @@ b365_7
 plotts.sample.wge(b365_7, arlimits = TRUE)
 ```
 
+```{r}
+head(b365_7)
+```
+
 # ARMA/ARIMA Modle
 
 ```{r}
@@ -94,7 +110,9 @@ fit_365_7 = est.ar.wge(b365_7, p = 8)
 preds_arma_7 = fore.arma.wge(BikeSharing$total_cust,
     phi = fit_365_7$phi, n.ahead = 7,
     lastn = TRUE, limits = FALSE)
+```
 
+```{r}
 preds_arma_182 = fore.arma.wge(BikeSharing$total_cust,
     phi = fit_365_7$phi, n.ahead = 182,
     lastn = TRUE, limits = FALSE)
@@ -110,6 +128,11 @@ ASE_182
 
 ```{r}
 plotts.sample.wge(fit_365_7$res, arlimits = TRUE)
+```
+
+```{r}
+roll.win.rmse.wge(b365_7, phi = fit_365_7$phi, horizon = 7)
+roll.win.rmse.wge(b365_7, phi = fit_365_7$phi, horizon = 182)
 ```
 
 # VAR Model
@@ -135,7 +158,7 @@ print(columns_no_missing)
 ```
 
 ```{r}
-# Select columns with no missing values excluding 'date'
+# Select columns with no missing values excluding 'date' and 'precip_L1'
 variables = c("total_cust", "temp_min", "temp_max", "temp_observ", "precip", "wind")
 BikeSharingSelected = BikeSharing[variables]
 
@@ -148,18 +171,23 @@ TotalCust = BikeSharingSmall$total_cust
 ```
 
 ```{r}
+# Double check we have all the dependent variables correctly saved to the dataframe
+head(BikeSharingDF)
+```
+
+```{r}
 # Create the VAR model
 VAR_BikeSharing = VAR(cbind(TotalCust, BikeSharingDF), lag.max = 5, type = "both")
 
 # Prediction
-pred_VAR_182 = predict(VAR_BikeSharing, n.ahead = 182)
 pred_VAR_7 = predict(VAR_BikeSharing, n.ahead = 7)
+pred_VAR_182 = predict(VAR_BikeSharing, n.ahead = 182)
 ```
 
 ```{r}
 # Plot the actual vs predicted 'total_cust'
-plot(BikeSharing$total_cust, type = "l", main = "Total Customers: Actual vs Predicted", xlab = "Time", ylab = "Total Customers")
-lines((nrow(BikeSharing) - 181):nrow(BikeSharing), pred_VAR_182$fcst$TotalCust[,1], col = "red")
+plot(BikeSharing$total_cust, type = "l", main = "Total Customers: Actual vs Predicted", xlab = "Time", ylab = "Total Customers", xlim = c(2800, nrow(BikeSharing)))
+lines((nrow(BikeSharing) - 6):nrow(BikeSharing), pred_VAR_7$fcst$TotalCust[,1], col = "red")
 ```
 
 ```{r}
@@ -170,11 +198,11 @@ lines((nrow(BikeSharing) - 181):nrow(BikeSharing), pred_VAR_182$fcst$TotalCust[,
 
 ```{r}
 # Calculate the Average Squared Error (ASE) for the prediction
-ASE_VAR_182 = mean((tail(BikeSharing$total_cust, 182) - pred_VAR_182$fcst$TotalCust[,1])^2)
-print(ASE_VAR_182)
-
 ASE_VAR_7 = mean((tail(BikeSharing$total_cust, 7) - pred_VAR_7$fcst$TotalCust[,1])^2)
 print(ASE_VAR_7)
+
+ASE_VAR_182 = mean((tail(BikeSharing$total_cust, 182) - pred_VAR_182$fcst$TotalCust[,1])^2)
+print(ASE_VAR_182)
 ```
 
 # MLP Model
@@ -202,6 +230,14 @@ plot(BikeSharing$total_cust, type = "l", main = "Total Customers: Actual vs Pred
 
 # Add the MLP forecasted 'total_cust' values
 lines((nrow(BikeSharing) - 181):nrow(BikeSharing), fore_mlp_182$mean, col = "red")
+```
+
+```{r}
+# Plot the actual 'total_cust' values
+plot(BikeSharing$total_cust, type = "l", main = "Total Customers: Actual vs Predicted", xlab = "Time", ylab = "Total Customers", xlim = c(2800, nrow(BikeSharing)))
+
+# Add the MLP forecasted 'total_cust' values
+lines((nrow(BikeSharing) - 6):nrow(BikeSharing), fore_mlp_7$mean, col = "red")
 ```
 
 ```{r}
@@ -240,49 +276,4 @@ ASE_ensemble_7
 
 ```{r}
 
-```
-
-```{r}
-
-```
-
-```{r}
-
-```
-
-```{r}
-
-```
-
-# APPENDIX
-
-```{r}
-# Top AIC was p = 9, q = 4, so we will go with this model
-aic5.wge(BikeSharing$total_cust, p = 0:12, q = 0:4)
-```
-
-```{r}
-# Find ASE for a 6 month forecast
-fit_arma = est.arma.wge(BikeSharing$total_cust, p = 9, q = 4)
-preds_arma = fore.arma.wge(BikeSharing$total_cust,
-    phi = fit_arma$phi, theta = fit_arma$theta, n.ahead = 182,
-    lastn = TRUE, limits = FALSE)
-```
-
-```{r}
-ASE = mean((tail(BikeSharing$total_cust, 182) - preds_arma$f)^2)
-ASE
-```
-
-```{r}
-# Find ASE for a 1 week forecast
-fit_arma = est.arma.wge(BikeSharing$total_cust, p = 9, q = 4)
-preds_arma = fore.arma.wge(BikeSharing$total_cust,
-    phi = fit_arma$phi, theta = fit_arma$theta, n.ahead = 7,
-    lastn = TRUE, limits = FALSE)
-```
-
-```{r}
-ASE = mean((tail(BikeSharing$total_cust, 7) - preds_arma$f)^2)
-ASE
 ```
