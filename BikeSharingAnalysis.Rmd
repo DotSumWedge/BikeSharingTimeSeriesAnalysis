@@ -19,6 +19,7 @@ library(astsa)
 library(vars)
 library(nnfor)
 library(dplyr)
+library(tidyr)
 ```
 
 ```{r}
@@ -83,7 +84,12 @@ ccf(BikeSharing$precip, BikeSharing$total_cust)
 ```{r}
 BikeSharing$precip_L1 = dplyr::lag(BikeSharing$precip, 1)
 BikeSharing$precip_L1[is.na(BikeSharing$precip_L1)] = median(BikeSharing$precip_L1, na.rm = TRUE)
-head(BikeSharing)
+```
+
+```{r}
+# Replace NA with 0 which represents non holidays, 1 represents holidays
+BikeSharing$holiday = replace_na(BikeSharing$holiday, 0)
+head(BikeSharing$holiday)
 ```
 
 ```{r}
@@ -159,7 +165,7 @@ print(columns_no_missing)
 
 ```{r}
 # Select columns with no missing values excluding 'date' and 'precip_L1'
-variables = c("total_cust", "temp_min", "temp_max", "temp_observ", "precip", "wind")
+variables = c("total_cust", "temp_min", "temp_max", "temp_observ", "precip", "wind", "holiday")
 BikeSharingSelected = BikeSharing[variables]
 
 # Leave out the last 182 values for the ASE calculation
