@@ -7,6 +7,7 @@ output: html_document
 
 
 ```{r}
+library(tidyverse)
 library(tswge)
 library(PolynomF)
 library(tidyverse)
@@ -16,13 +17,48 @@ library(vars)
 library(nnfor)
 ```
 
-```{r}
-# Set the working directory to the specified path
-#setwd("C:/SMU MS Data Science/TimeSeries/FinalProject/BikeSharingTimeSeriesAnalysis")
+EXPLORE THE DATA
 
-# Check to confirm that the working directory has been set correctly
-#getwd()
-```
+Content
+This dataset can be used to forecast demand to avoid oversupply and shortages. It spans from January 1, 2011, until December 31, 2018. Determining new station locations, analyzing movement patterns or planning routes will only be possible with additional data.
+
+date - date with the format yyyy-mm-dd
+temp_avg - average daily temperature in degree Celsius
+temp_min - minimum daily temperature in degree Celsius
+temp_max - maximum daily temperature in degree Celsius
+temp_observ - temperature at the time of observation in degree Celsius
+precip - amount of precipitation in mm
+wind - wind speed in meters per second
+wt_fog - weather type fog, ice fog, or freezing fog (may include heavy fog)
+wt_heavy_fog - weather type heavy fog or heaving freezing fog (not always distinguished from fog)
+wt_thunder - weather type thunder
+wt_sleet - weather type ice pellets, sleet, snow pellets, or small hail
+wt_hail - weather type hail (may include small hail)
+wt_glaze - weather type glaze or rime
+wt_haze - weather type smoke or haze
+wt_drift_snow - weather type blowing or drifting snow
+wt_high_wind - weather type high or damaging winds
+wt_mist - weather type mist
+wt_drizzle - weather type drizzle
+wt_rain - weather type rain (may include freezing rain, drizzle, and freezing drizzle)
+wt_freeze_rain - weather type freezing rain
+wt_snow - weather type snow, snow pellets, snow grains, or ice crystals
+wt_ground_fog - weather type ground fog
+wt_ice_fog - weather type ice fog or freezing fog
+wt_freeze_drizzle - weather type freezing drizzle
+wt_unknown - weather type unknown source of precipitation
+casual - number of unregistered customers
+registered - number of registered customers
+total_cust - sum of registered and casual customers
+holiday - indicates whether the day is a holiday or not
+
+Acknowledgements
+data used to create this dataset was taken from:
+
+Capital Bikeshare for the bike sharing demand,
+NOAA's National Climatic Data Center for weather data,
+DC Department of Human Resources for data on public holidays.
+
 
 ```{r}
 # The chosen data set is the bike_sharing_dataset.csv from kaggle: https://www.kaggle.com/datasets/juliajemals/bike-sharing-washington-dc
@@ -30,13 +66,15 @@ library(nnfor)
 # Being able to model and predict total_cust can help entities directly involved or adjacent to bike sharing better understand and predict the varying demand to avoid oversupply or shortages. Forecasting future demand can help plan bike maintance as heavily used bikes break down more often. This information can help inform business decisions, setting prices, and creating efective advertisements. 
 
 BikeSharing = read.csv("bike_sharing_dataset.csv", header = TRUE)
-BikeSharing_train = data.frame(TotalCust = ts(BikeSharing$total_cust))
-
 head(BikeSharing)
-nrow(BikeSharing)
+dim(BikeSharing)
+
+BikeSharing_train = data.frame(TotalCust = ts(BikeSharing$total_cust))
 
 # There are 4 consecutive missing values
 which(is.na(BikeSharing$total_cust))
+which(is.na(BikeSharing$wt_rain))
+which(is.na(BikeSharing$precip))
 ```
 
 ```{r}
@@ -56,6 +94,52 @@ BikeSharing$total_cust[1848:1853]
 
 # Plot around where the imputed values are
 plot(BikeSharing$total_cust[1838:1863], type = "l")
+
+no_missing_values = apply(BikeSharing, 2, function(x) all(complete.cases(x)))
+columns_no_missing = names(BikeSharing)[no_missing_values]
+
+# All columns
+colnames(BikeSharing)
+# Columns with no missing values
+print(columns_no_missing)
+# date, total_cust, temp_min, temp_max, temp_observ, precip, wind
+
+head(BikeSharing)
+
+#check for the indices of the variable we found with no missing values
+# Define the vectors
+vec1 <- c("date", "temp_avg", "temp_min", "temp_max", "temp_observ", "precip", 
+          "wind", "wt_fog", "wt_heavy_fog", "wt_thunder", "wt_sleet", "wt_hail", 
+          "wt_glaze", "wt_haze", "wt_drift_snow", "wt_high_wind", "wt_mist", 
+          "wt_drizzle", "wt_rain", "wt_freeze_rain", "wt_snow", "wt_ground_fog", 
+          "wt_ice_fog", "wt_freeze_drizzle", "wt_unknown", "casual", "registered", 
+          "total_cust", "holiday")
+
+vec2 <- c("total_cust", "temp_min", "temp_max", "temp_observ", "precip", "wind")
+
+# Get the index of each value in vec2 based on vec1
+indices <- match(vec2, vec1)
+
+# Print the indices
+print(indices)
+
+
+#SANITY CHECK FOR INDICES MATCHINGING TO CTS variables with no missing values.
+#total_cust = indices 28
+#temp_min = indices 3
+#temp_max = indices 4
+#temp_observ = indices 5
+#precip = indices 6
+#wind = indices 7
+
+
+# Pick specific columns using column indexes with no missing values for cts variables
+# Now we can plot a matrix of scatter plots for the cts variables
+# We can observe that total_cust or dependent variable has strong correalation with Highly significant (p-value < 0.001) indicated by the three stars with temp_min, temp_max, temp_observ, precip, and wind. From this plot an associated decrease in precip and wind would increase total customers. This is intuititive as people would genrally rent out bikes as the weather has less wind and precipitation.
+ggpairs(BikeSharing[, c(28,3,4,5,6,7)])
+
+
+
 ```
 Plotting the full dataset
 The realization plot shows strong periodic trends, wandering behavior, and variance that changes over time. We see slowly dampening autocorrelation with weak and an irregular length periodic behavior. There is a peak at zero in the parzen frequency window (spectral density plot),This could suggest a yearly seasonal trend since we have 1/365 = 0.0027.The parzen window also shows a peak around 0.15, which is suggest a period of 1/7 = 0.1428, This number is close to the .15 estimate we see in the second highest peak from the spectral density plot. Because this data is collected daily, there evidence to suggest a weekly trend. We can hypothesize total_cust could have a greater total_cust on the weekends when all other variables are held constant. Our intuition also suggest ridership is daily, since people will bike continue to bike the next day if that is the main mode of transportation or for exercise purposes.Another thing to note we see evidence of non stationary data as it seems the trend for total_cust increases over time cyclically as and does matter where we are in time series time point.Also note since we see slowly damping sample auto correlations, this suggest the need to difference the data. 
@@ -347,7 +431,7 @@ ASE
 #more concise way to calculate ASE
 ASE = mean((tail(BikeSharing$total_cust, 182) - f6m$f)^2)
 
-ASE
+ASE#21760890
 ```
 
 
@@ -371,22 +455,242 @@ ASE
 
 
 ```
-
+VARS MODEL Did Better ASE wise for 6 month forecast than the ARMA(1,1) S =7  model.
 ```{r}
 
-```
+library(vars)
 
+# Remove rows with NA values from the BikeSharing dataset
+BikeSharing <- na.omit(BikeSharing)
+
+n_rows <- nrow(BikeSharing)
+print(n_rows)
+
+
+#Delete all if missing completely at random
+#First we need to check for missing values
+dim(BikeSharing)
+sum(is.na(BikeSharing))
+str(BikeSharing)
+#2516 missing values int eh wt_rain column.
+sum(is.na(BikeSharing$wt_rain))
+#Example of MCAR idea: The probability of missing does not depend on the data, the covariates.  It is as if the wind blew away records at random and wt_rain all equally likely to by blown away (missing).  List wise Deletion OK and Imputation OK!
+#now we need to determine if the values are missing completely at random, so lets check this by plotting the data visually with a scatter plot
+
+
+#We can observe from this scatter plot that the wt_rain values that are missing for the beers are spread out over the many present ones in this data set. This suggests that the data is missing completely at random so we do not need to include those wt_rain.
+
+library(ggplot2)
+library(plotly)
+
+data <- data.frame(x = is.na(BikeSharing$wt_rain))
+
+
+gg <- ggplot(data, aes(x = 1:nrow(data), y = x)) +
+  geom_point(size = 1, height = .5, width = .5, color = "red") +
+  xlab("days by row number") +
+ ylab("wt_rain Values Present or Missing") +
+ labs(title = "Scatter Plot of Missing wt_rain Values", size = 10) +
+ scale_y_discrete(labels = c("Present", "Missing")) +
+ scale_x_continuous(breaks = seq(0, nrow(data), by = 100)) +
+ theme(axis.text.x = element_text(angle = 90, hjust  = 1)) + 
+ theme_classic()
+gg
+
+
+
+#Easier to read
+TotalCust = BSsmall$total_cust
+Precipitation = BSsmall$precip
+Wind = BSsmall$wind
+Tempe_Observe = BSsmall$temp_observ
+Temp_Min = BSsmall$temp_min
+Temp_Max = BSsmall$temp_max
+
+
+head(BSsmall)
+
+#run the code below with function VARselect to find a p to fit into Var Function
+
+VAR_Bikeshare2 = VAR(cbind(TotalCust,Precipitation,Wind,Tempe_Observe,Temp_Min,Temp_Max),lag.max = 10, type = "both",p = 9)
+
+VAR_Bikeshare2
+
+#make predictions with model with 182 prediction (6months)
+preds=predict(VAR_Bikeshare2,n.ahead=182)
+
+preds
+
+#Plot
+plot(BikeSharing$total_cust, type = "l",xlim = c(0,2922), ylab = "Total Customers", main = "6 month Total Customer Forecast")
+lines(seq(2741,2922,1), preds$fcst$TotalCust[,1], type = "l", col = "red")
+
+
+#Actual 182 sum(TotalCust -predicted)^2/182
+ASE = mean((BikeSharing$total_cust[2741:2922] - preds$fcst$TotalCust[,1][1:182])^2)
+ASE #19510219
+
+### Forecast Ahead 6 months
+
+#chooses p =9 
+VARselect(cbind(TotalCust,Precipitation,Wind,Tempe_Observe,Temp_Min,Temp_Max),lag.max = 10, season = 182, type = "both")
+
+TotalCustVAR = VAR(cbind(TotalCust,Precipitation,Wind,Tempe_Observe,Temp_Min,Temp_Max),season = 182, type = "both",p = 9)
+preds=predict(TotalCustVAR,n.ahead=182)
+
+#Plot to show Forcast prediction up to 6 months
+plot(seq(1,2922,1), BikeSharing$total_cust, type = "l",xlim = c(0,3104), ylab = "Total Customers", main = "6 month Total Customer Forecast")
+lines(seq(2923,3104,1), preds$fcst$TotalCust[,1], type = "l", col = "red")
+
+```
+MLP Neural Network model
+
+Note for this MLP it took too much computational time so I trained on 877 observations and only using 1059 data points and not all of the original 2922.
 ```{r}
 
-```
+BSsmall = BikeSharing[1:877,] #877 is about 30% of 2922
+length(BSsmall$precip)
 
+
+
+#Easier to read
+TotalCust = BSsmall$total_cust
+Precipitation = BSsmall$precip
+Wind = BSsmall$wind
+Temp_Observe = BSsmall$temp_observ
+Temp_Min = BSsmall$temp_min
+Temp_Max = BSsmall$temp_max
+
+str(BikeSharing)
+
+# Get the minimum and maximum values of the precip column
+min_valueprecip <- min(BikeSharing$precip)
+max_valueprecip <- max(BikeSharing$precip)
+
+# Print the minimum and maximum values
+#use this values to see what you should set for the ylim for plots.
+print(min_valueprecip)
+print(max_valueprecip)
+
+# Get the minimum and maximum values of the wind column
+min_valuewind <- min(BikeSharing$wind)
+max_valuewind <- max(BikeSharing$wind)
+
+# Print the minimum and maximum values
+#use this values to see what you should set for the ylim for plots.
+print(min_valuewind)
+print(max_valuewind)
+
+# Get the minimum and maximum values of the tempobserved column
+min_valuetempobserved <- min(BikeSharing$temp_observ)
+max_valuetempobserved <- max(BikeSharing$temp_observ)
+
+# Print the minimum and maximum values
+#use this values to see what you should set for the ylim for plots.
+print(min_valuetempobserved)
+print(max_valuetempobserved)
+
+# Get the minimum and maximum values of the tempmin column
+min_valuetempmin <- min(BikeSharing$temp_min)
+max_valuetempmin <- max(BikeSharing$temp_min)
+
+# Print the minimum and maximum values
+#use this values to see what you should set for the ylim for plots.
+print(min_valuetempmin)
+print(max_valuetempmin)
+
+# Get the minimum and maximum values of the tempmax column
+min_valuetempmax <- min(BikeSharing$temp_max)
+max_valuetempmax <- max(BikeSharing$temp_max)
+
+# Print the minimum and maximum values
+#use this values to see what you should set for the ylim for plots.
+print(min_valuetempmax)
+print(max_valuetempmax)
+
+
+#forecast Precipitation, Wind, Temp_observed, Temp_Min, Temp_Max
+
+length(Precipitation)
+
+#Precipitation
+fit.mlp.precipitation = mlp(ts(BSsmall$precip), reps = 10, comb = "median")
+plot(fit.mlp.precipitation)
+fore.mlp.precipitation = forecast(fit.mlp.precipitation, h = 182)
+plot(fore.mlp.precipitation, ylim = c(0,120), main = "Precipitation (mililmeters) MLP Forecasts")
+
+
+#Wind
+fit.mlp.wind = mlp(ts(BSsmall$wind), reps = 10, comb = "median")
+plot(fit.mlp.wind)
+fore.mlp.wind = forecast(fit.mlp.wind, h = 182)
+plot(fore.mlp.wind, ylim = c(0,13), main = "Wind Speed in meters per second MLP Forecasts")
+
+
+#Temp_Observe
+fit.mlp.temp_observe = mlp(ts(BSsmall$temp_observ), reps = 10, comb = "median")
+plot(fit.mlp.temp_observe)
+fore.mlp.temp_observe = forecast(fit.mlp.temp_observe, h = 182)
+plot(fore.mlp.temp_observe, ylim = c(-16,29), main = "Temperature Observed in degree Celsius MLP Forecasts")
+
+#Temp_Min
+fit.mlp.temp_min = mlp(ts(BSsmall$temp_min), reps = 10, comb = "median")
+plot(fit.mlp.temp_min)
+fore.mlp.temp_min = forecast(fit.mlp.temp_min, h = 182)
+plot(fore.mlp.temp_min, ylim = c(-17,27), main = "Minimum Daily Temperature in degree Celsius MLP Forecasts")
+
+#Temp_Max
+fit.mlp.temp_max = mlp(ts(BSsmall$temp_max), reps = 10, comb = "median")
+plot(fit.mlp.temp_max)
+fore.mlp.temp_max = forecast(fit.mlp.temp_max, h = 182)
+plot(fore.mlp.temp_max, ylim = c(-8,38), main = "Maximum Daily Temperature in degree Celsius MLP Forecasts")
+
+#Package the above predictor variables into a dataframe
+BSsmallDF_fore = data.frame(Days = ts(seq(1,1059,1)),precip= ts(c(BSsmall$precip, fore.mlp.precipitation$mean)),wind= ts(c(BSsmall$wind,fore.mlp.wind$mean)),temp_oberv = ts(c(BSsmall$temp_observ,fore.mlp.temp_observe$mean)),temp_min = ts(c(BSsmall$temp_min,fore.mlp.temp_min$mean)), temp_max = ts(c(BSsmall$temp_max,fore.mlp.temp_max$mean)))
+BSsmallDF_fore # These are the forecasted explantory variables
+
+
+#forecast total_cust using mlp forecasted xreg (don't need to forecast days)
+#fit MLP(training) (get the most optimal weights for what we know)
+#all 1-877 that we know
+BSsmallDF = data.frame(Days = ts(seq(1,877,1)), precip= ts(BSsmall$precip),wind= ts(BSsmall$wind),temp_oberv= ts(BSsmall$temp_observ),temp_min = ts(BSsmall$temp_min), temp_max= ts(BSsmall$temp_max))
+fit.mlp = mlp(ts(BSsmall$total_cust),reps = 10, comb = "median",xreg=BSsmallDF)
+fit.mlp
+plot(fit.mlp)
+
+
+#forecast
+fore.mlp = forecast(fit.mlp, h=182, xreg = BSsmallDF_fore)
+plot(fore.mlp)
+ASE = mean((BikeSharing$total_cust[878:1059] - fore.mlp$mean)^2)
+ASE
+
+
+#plot
+plot(seq(1,1059,1),BikeSharing$total_cust[1:1059], type = 'l',xlim = c(0,1070), ylab = "Total Customers", main = "6 month Total Customer Forecast")
+lines(seq(878,1059,1), fore.mlp$mean, type = "l", col ="red")
+
+
+
+
+
+
+```
+Ensemble model
 ```{r}
 
+#ensemble
+
+ensemble = (preds$fcst$TotalCust[,1] + fore.mlp$mean)/2
+
+#plot
+plot(seq(1,1059,1),BikeSharing$total_cust[1:1059], type = 'l',xlim = c(0,1070), ylab = "Total Customers", main = "6 month Total Customer Forecast")
+lines(seq(878,1059,1), ensemble, type = "l", col ="green")
+
+ASE = mean((BikeSharing$total_cust[878:1059] - ensemble)^2,na.rm = TRUE)
+ASE
+
+
+
 ```
-
-```{r}
-
-```
-
-
 
