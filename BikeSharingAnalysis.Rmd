@@ -258,7 +258,7 @@ print(ASE_mlp_7)
 
 ```{r}
 #Ensemble
-ensemble_182 = (preds_arma_182$f + pred_VAR_182$fcst$TotalCust[, 1] + fore_mlp_182$mean) / 3
+ensemble_182 = (pred_VAR_182$fcst$TotalCust[, 1] + fore_mlp_182$mean) / 3
 
 #Plot
 plot(BikeSharing$total_cust, type = "l", xlim = c(2500, nrow(BikeSharing)), ylab = "Total Customers: Actual vs Predicted", main = "26 Week Customer Forecast")
@@ -270,7 +270,7 @@ ASE_ensemble_182
 
 ```{r}
 #Ensemble
-ensemble_7 = (preds_arma_7$f + pred_VAR_7$fcst$TotalCust[, 1] + fore_mlp_7$mean) / 3
+ensemble_7 = (pred_VAR_7$fcst$TotalCust[, 1] + fore_mlp_7$mean) / 3
 
 #Plot
 plot(BikeSharing$total_cust, type = "l", xlim = c(2800, nrow(BikeSharing)), ylab = "Total Customers: Actual vs Predicted", main = "1 Week Customer Forecast")
