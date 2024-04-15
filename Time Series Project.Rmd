@@ -146,6 +146,7 @@ The realization plot shows strong periodic trends, wandering behavior, and varia
 
 ```{r}
 #plot sample of the data 
+#we see slowy dampning acf this means evidence to suggest wandering behavior, also peak at zero for the spectral density adds additional evidence.
 plotts.sample.wge(BikeSharing$total_cust)
 
 #step 1 visual test
@@ -168,7 +169,7 @@ BikeSharing_ts <- ts(BikeSharing_df$Total_Customers, start=c(2011, 1), frequency
 plot.ts(BikeSharing_ts)
 ```
 
-We will try to experiment to estimate for candidate AR or ARMA model based on AIC and BIC values here. We can observe that AN AR(8) model was picked by both AIC AND BIC and also by the PACF function we saw evidence of an AR(8) as well.
+We will try to experiment to estimate for candidate AR or ARMA model based on AIC and BIC values here. We can observe that AN AR(8) model was picked by both AIC AND BIC and also by the PACF function (Box and jenkins method) we saw evidence of an AR(8) as well.
 
 ```{r}
 # Top AIC was p = 9, q = 4
@@ -226,7 +227,7 @@ b1=artrans.wge(BikeSharing$total_cust,phi.tr=1)
 b2=artrans.wge(b1,phi.tr=1)
 b3=artrans.wge(b2,phi.tr=1)
 #difference the data for (1-B^7) fit
-b7=artrans.wge(b1,phi.tr = c(rep(0,6),1))
+#b7=artrans.wge(b1,phi.tr = c(rep(0,6),1))
 
 plotts.sample.wge(b1, arlimits = TRUE)
 plotts.sample.wge(b7, arlimits = TRUE)
@@ -239,17 +240,18 @@ plotts.sample.wge(b7, arlimits = TRUE)
 # Difference the data to until we get a stationary model to check for (1-B^S) i.e (1-B^7) and (1-B^365)
 
 #difference the data for (1-B^7) fit
+#although the data does not look white we do see in the acf that a sinusoidal trend appears
 b7=artrans.wge(BikeSharing$total_cust,phi.tr = c(rep(0,6),1))
 
 #difference the data furthur with (1-B^365) fit
 b7_365=artrans.wge(b7,phi.tr = c(rep(0,364),1)) #after doing this the data appears to be more like white noise indicating a stationary model so adding a (1-B^7) and (1-B^365) to our model would be useful.
 b7_365_1=artrans.wge(b7_365,phi.tr=1)
 # estimate parameters of stationary part
-est.7.365=est.ar.wge(b7_365,p=8)
+#est.7.365=est.ar.wge(b7_365,p=8)
 #est.7.365.1=est.ar.wge(b7_365_1,p=8)
 #est.7.365
 est.7=est.ar.wge(b7,p=8)
-est.7.365$res
+#est.7.365$res
 
 ```
 
@@ -307,11 +309,15 @@ plot.ts(est.7$res)
 #from this sample plot we can see in the ACF evidence for s=7, since we see peaks at the lags 7,14, and around 21
 plotts.sample.wge(est.7$res, arlimits = TRUE)
 
+#difference the data for (1-B^7) fit
+#although the data does not look white we do see in the acf that a sinusoidal trend appears
+#b7=artrans.wge(BikeSharing$total_cust,phi.tr = c(rep(0,6),1))
+
 # get the phis 
 est.7$phi
 
-#run ljung test for white noise
-ljung.wge(est.7$res,p=8)
+#run ljung test for white noise, visually we saw that there was evidence against white noise.
+ljung.wge(est.7$res,p=8) 
 
 ljung.wge(est.7$res,K=48,p=8)
 
@@ -322,7 +328,26 @@ f = fore.arima.wge(BikeSharing$total_cust, s=7, phi = est.7$phi, n.ahead = 182, 
 f
 
 ASE = mean((BikeSharing$total_cust[(length(BikeSharing$total_cust)-181):length(BikeSharing$total_cust)] - f$f)^2)
+#ASE 21760890 so this model although it is on the higher end, it has it merits in being simple without
+ASE
 
+# Plot the actual vs predicted 'total_cust'
+plot(BikeSharing$total_cust, type = "l", main = "Total Customers: Actual vs Predicted 26 weeks", xlab = "Time", ylab = "Total Customers", xlim = c(2500, nrow(BikeSharing)))
+lines((nrow(BikeSharing) - 181):nrow(BikeSharing), f$f, col = "red")
+
+#Forecasting with SARIMA model here such that ARIMA(p,d,q) with s=7
+f2 = fore.arima.wge(BikeSharing$total_cust, s=7, phi = est.7$phi, n.ahead = 7, limits =  F, lastn = T, plot=TRUE)
+
+f2
+
+# Plot the actual vs predicted 'total_cust'
+plot(BikeSharing$total_cust, type = "l", main = "Total Customers: Actual vs Predicted one week", xlab = "Time", ylab = "Total Customers", xlim = c(2800, nrow(BikeSharing)))
+lines((nrow(BikeSharing) - 6):nrow(BikeSharing), f2$f, col = "red")
+
+
+
+ASE = mean((BikeSharing$total_cust[(length(BikeSharing$total_cust)-6):length(BikeSharing$total_cust)] - f2$f)^2)
+#ASE 8932177 best performing
 ASE
 
 #USE box and Jenkins Method to find what type of AR model this is with the PACF function.
@@ -384,7 +409,7 @@ for(i in 1:sims)
 
 
 # Assuming BikeSharing$total_cust is your time series object
-# Select the last 182 values <=> about 6 months = 182 days
+# Select the last 182 values <=> about 26 weeks = 182 days
 last_6mon_values <- tail(BikeSharing$total_cust, 182)
 
 # Now you can use last_60_values in your analysis or plotting
@@ -410,7 +435,7 @@ for(i in 1:sims) {
 ```
 
 ```{r}
-# Find ASE for a 6 month forecast
+# Find ASE for a 26 weeks forecast AR(8) model has an ASE second best so far 10965412
 fit_ar = est.ar.wge(BikeSharing$total_cust, p = 8)
 preds_arma = fore.arma.wge(BikeSharing$total_cust,
     phi = fit_ar$phi, n.ahead = 182,
@@ -419,8 +444,23 @@ preds_arma = fore.arma.wge(BikeSharing$total_cust,
 ASE = mean((tail(BikeSharing$total_cust, 182) - preds_arma$f)^2)
 ASE
 
+# Find ASE for a 1 weeks forecast AR(8) model has an ASE best so far 3095643
+fit_ar = est.ar.wge(BikeSharing$total_cust, p = 8)
+preds_arma = fore.arma.wge(BikeSharing$total_cust,
+    phi = fit_ar$phi, n.ahead = 7,
+    lastn = TRUE, limits = FALSE)
 
-# Sakava Alternative code with S = 7
+ASE = mean((tail(BikeSharing$total_cust, 7) - preds_arma$f)^2)
+ASE
+
+# Plot the actual vs predicted 'total_cust'
+plot(BikeSharing$total_cust, type = "l", main = "Total Customers: Actual vs Predicted one week", xlab = "Time", ylab = "Total Customers", xlim = c(2800, nrow(BikeSharing)))
+lines((nrow(BikeSharing) - 6):nrow(BikeSharing), preds_arma$f, col = "red")
+
+
+
+
+# Sakava Alternative code with AR(8) S = 7 for 26 weeks
 f6m = fore.arima.wge(BikeSharing$total_cust, s=7, phi = est.7$phi, n.ahead = 182, limits =  F, lastn = T, plot=TRUE)
 
 
@@ -432,39 +472,36 @@ ASE
 ASE = mean((tail(BikeSharing$total_cust, 182) - f6m$f)^2)
 
 ASE#21760890
+
+
+
 ```
 
 
 ```{r}
 # Find ASE for a 1 week forecast
-fit_arma = est.arma.wge(BikeSharing$total_cust, p = 9, q = 4)
-preds_arma = fore.arma.wge(BikeSharing$total_cust,
-    phi = fit_arma$phi, theta = fit_arma$theta, n.ahead = 7,
-    lastn = TRUE, limits = FALSE)
+#fit_arma = est.arma.wge(BikeSharing$total_cust, p = 9, q = 4)
+#preds_arma = fore.arma.wge(BikeSharing$total_cust,
+   # phi = fit_arma$phi, theta = fit_arma$theta, n.ahead = 7,
+    #lastn = TRUE, limits = FALSE)
 
-ASE = mean((tail(BikeSharing$total_cust, 7) - preds_arma$f)^2)
-ASE
+#ASE = mean((tail(BikeSharing$total_cust, 7) - preds_arma$f)^2)
+#ASE
 
 
 # Sakava Alternative code with S = 7
-f1w = fore.arima.wge(BikeSharing$total_cust, s=7, phi = est.7$phi, n.ahead = 7, limits =  F, lastn = T, plot=TRUE)
+#f1w = fore.arima.wge(BikeSharing$total_cust, s=7, phi = est.7$phi, n.ahead = 7, limits =  F, lastn = T, plot=TRUE)
 
-ASE = mean((BikeSharing$total_cust[(length(BikeSharing$total_cust)-7):length(BikeSharing$total_cust)] - f1w$f)^2)
+#ASE = mean((BikeSharing$total_cust[(length(BikeSharing$total_cust)-7):length(BikeSharing$total_cust)] - f1w$f)^2)
 
-ASE
+#ASE
 
 
 ```
-VARS MODEL Did Better ASE wise for 6 month forecast than the ARMA(1,1) S =7  model.
+VARS MODEL Did Better ASE wise for 26 week forecast than the ARMA(1,1) S =7  model.
 ```{r}
 
 library(vars)
-
-# Remove rows with NA values from the BikeSharing dataset
-BikeSharing <- na.omit(BikeSharing)
-
-n_rows <- nrow(BikeSharing)
-print(n_rows)
 
 
 #Delete all if missing completely at random
@@ -498,6 +535,7 @@ gg <- ggplot(data, aes(x = 1:nrow(data), y = x)) +
 gg
 
 
+BSsmall = BikeSharing[1:2740,] 
 
 #Easier to read
 TotalCust = BSsmall$total_cust
@@ -510,19 +548,22 @@ Temp_Max = BSsmall$temp_max
 
 head(BSsmall)
 
-#run the code below with function VARselect to find a p to fit into Var Function
+#run the code below with function VARselect to find a p = 4 to fit into Var Function
 
-VAR_Bikeshare2 = VAR(cbind(TotalCust,Precipitation,Wind,Tempe_Observe,Temp_Min,Temp_Max),lag.max = 10, type = "both",p = 9)
-
+VAR_Bikeshare2 = VARselect(cbind(TotalCust,Precipitation,Wind,Tempe_Observe,Temp_Min,Temp_Max),lag.max = 10, type = "both")
 VAR_Bikeshare2
 
-#make predictions with model with 182 prediction (6months)
-preds=predict(VAR_Bikeshare2,n.ahead=182)
+VAR_Bikeshare3 = VAR(cbind(TotalCust,Precipitation,Wind,Tempe_Observe,Temp_Min,Temp_Max),lag.max = 10, type = "both",p = 9)
+
+VAR_Bikeshare3
+
+#make predictions with model with 182 prediction (26 weeks)
+preds=predict(VAR_Bikeshare3,n.ahead=182)
 
 preds
 
 #Plot
-plot(BikeSharing$total_cust, type = "l",xlim = c(0,2922), ylab = "Total Customers", main = "6 month Total Customer Forecast")
+plot(BikeSharing$total_cust, type = "l",xlim = c(2500,2922), ylab = "Total Customers", main = "6 month Total Customer Forecast")
 lines(seq(2741,2922,1), preds$fcst$TotalCust[,1], type = "l", col = "red")
 
 
@@ -530,17 +571,21 @@ lines(seq(2741,2922,1), preds$fcst$TotalCust[,1], type = "l", col = "red")
 ASE = mean((BikeSharing$total_cust[2741:2922] - preds$fcst$TotalCust[,1][1:182])^2)
 ASE #19510219
 
-### Forecast Ahead 6 months
+### Forecast Ahead 26 weeks
 
 #chooses p =9 
 VARselect(cbind(TotalCust,Precipitation,Wind,Tempe_Observe,Temp_Min,Temp_Max),lag.max = 10, season = 182, type = "both")
-
+#TotalCust data with 2740
 TotalCustVAR = VAR(cbind(TotalCust,Precipitation,Wind,Tempe_Observe,Temp_Min,Temp_Max),season = 182, type = "both",p = 9)
 preds=predict(TotalCustVAR,n.ahead=182)
 
 #Plot to show Forcast prediction up to 6 months
-plot(seq(1,2922,1), BikeSharing$total_cust, type = "l",xlim = c(0,3104), ylab = "Total Customers", main = "6 month Total Customer Forecast")
-lines(seq(2923,3104,1), preds$fcst$TotalCust[,1], type = "l", col = "red")
+#plot(seq(1,2922,1), BikeSharing$total_cust, type = "l",xlim = c(2500,3104), ylab = "Total Customers", main = "26 weeks Total Customer Forecast")
+#lines(seq(2923,3104,1), preds$fcst$TotalCust[,1], type = "l", col = "red")
+
+#Plot to show Forcast prediction up to 6 months
+plot(seq(1,2922,1), BikeSharing$total_cust, type = "l",xlim = c(2500,3104), ylab = "Total Customers", main = "26 weeks Total Customer Forecast")
+lines(seq(2741,2922,1), preds$fcst$TotalCust[,1], type = "l", col = "red")
 
 ```
 MLP Neural Network model
@@ -663,11 +708,11 @@ plot(fit.mlp)
 fore.mlp = forecast(fit.mlp, h=182, xreg = BSsmallDF_fore)
 plot(fore.mlp)
 ASE = mean((BikeSharing$total_cust[878:1059] - fore.mlp$mean)^2)
-ASE
+ASE #2859746
 
 
 #plot
-plot(seq(1,1059,1),BikeSharing$total_cust[1:1059], type = 'l',xlim = c(0,1070), ylab = "Total Customers", main = "6 month Total Customer Forecast")
+plot(seq(1,1059,1),BikeSharing$total_cust[1:1059], type = 'l',xlim = c(800,1070), ylab = "Total Customers", main = "6 month Total Customer Forecast")
 lines(seq(878,1059,1), fore.mlp$mean, type = "l", col ="red")
 
 
@@ -684,11 +729,11 @@ Ensemble model
 ensemble = (preds$fcst$TotalCust[,1] + fore.mlp$mean)/2
 
 #plot
-plot(seq(1,1059,1),BikeSharing$total_cust[1:1059], type = 'l',xlim = c(0,1070), ylab = "Total Customers", main = "6 month Total Customer Forecast")
+plot(seq(1,1059,1),BikeSharing$total_cust[1:1059], type = 'l',xlim = c(800,1070), ylab = "Total Customers", main = "6 month Total Customer Forecast")
 lines(seq(878,1059,1), ensemble, type = "l", col ="green")
 
 ASE = mean((BikeSharing$total_cust[878:1059] - ensemble)^2,na.rm = TRUE)
-ASE
+ASE #7540424
 
 
 
