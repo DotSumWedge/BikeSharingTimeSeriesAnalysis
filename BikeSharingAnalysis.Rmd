@@ -9,7 +9,6 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-
 ```{r}
 library(tswge)
 library(PolynomF)
@@ -182,8 +181,14 @@ head(BikeSharingDF)
 ```
 
 ```{r}
+VAR_Select_Bikeshare = VARselect(cbind(TotalCust, BikeSharingDF),lag.max = 10, type = "both")
+VAR_Select_Bikeshare
+```
+
+```{r}
+
 # Create the VAR model
-VAR_BikeSharing = VAR(cbind(TotalCust, BikeSharingDF), lag.max = 5, type = "both")
+VAR_BikeSharing = VAR(cbind(TotalCust, BikeSharingDF), lag.max = 10, type = "both", p = 9)
 
 # Prediction
 pred_VAR_7 = predict(VAR_BikeSharing, n.ahead = 7)
@@ -216,8 +221,14 @@ print(ASE_VAR_182)
 # Exclude the first 2,300 values from BikeSharingSmall and BikeSharingDF
 BikeSharingSmallAdjusted = BikeSharingSmall[-(1:2300), ]
 BikeSharingDFAdjusted = BikeSharingDF[-(1:2300), ]
-fit_mlp = mlp(ts(BikeSharingSmallAdjusted$total_cust), reps = 7, comb = "median", xreg = BikeSharingDFAdjusted)
+```
 
+```{r}
+
+```
+
+```{r}
+fit_mlp = mlp(ts(BikeSharingSmallAdjusted$total_cust), reps = 7, comb = "median", xreg = BikeSharingDFAdjusted)
 plot(fit_mlp)
 ```
 
@@ -278,6 +289,12 @@ lines((nrow(BikeSharing) - 6):nrow(BikeSharing), ensemble_7, type = "l", col = "
 
 ASE_ensemble_7 = mean((tail(BikeSharing$total_cust, 7) - ensemble_7)^2)
 ASE_ensemble_7
+```
+
+```{r}
+# Plot the actual vs predicted 'total_cust'
+plot(BikeSharing$total_cust, type = "l", main = "Total Customers: Actual vs Predicted", xlab = "Time", ylab = "Total Customers", xlim = c(2800, nrow(BikeSharing)))
+lines((nrow(BikeSharing) - 181):nrow(BikeSharing), f, col = "red")
 ```
 
 ```{r}
