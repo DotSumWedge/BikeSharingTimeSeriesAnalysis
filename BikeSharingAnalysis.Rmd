@@ -20,7 +20,6 @@ library(nnfor)
 library(dplyr)
 library(tidyr)
 library(ggplot2)
-#library(plotly)
 ```
 
 ```{r}
@@ -124,37 +123,37 @@ plotts.sample.wge(b365_7, arlimits = TRUE)
 head(b365_7)
 ```
 
-# ARMA/ARIMA Modle
+# ARIMA Modle
 
 ```{r}
-fit_365_7 = est.ar.wge(b365_7, p = 8)
+fit_7 = est.ar.wge(b7, p = 8)
 
-preds_arma_7 = fore.arma.wge(BikeSharing$total_cust,
-    phi = fit_365_7$phi, n.ahead = 7,
+pred_arima_7 = fore.arma.wge(BikeSharing$total_cust,
+    phi = fit_7$phi, n.ahead = 7,
     lastn = TRUE, limits = FALSE)
 ```
 
 ```{r}
-preds_arma_182 = fore.arma.wge(BikeSharing$total_cust,
-    phi = fit_365_7$phi, n.ahead = 182,
+pred_arima_182 = fore.arma.wge(BikeSharing$total_cust,
+    phi = fit_7$phi, n.ahead = 182,
     lastn = TRUE, limits = FALSE)
 ```
 
 ```{r}
-ASE_7 = mean((tail(BikeSharing$total_cust, 7) - preds_arma_7$f)^2)
+ASE_7 = mean((tail(BikeSharing$total_cust, 7) - pred_arima_7$f)^2)
 ASE_7
 
-ASE_182 = mean((tail(BikeSharing$total_cust, 182) - preds_arma_182$f)^2)
+ASE_182 = mean((tail(BikeSharing$total_cust, 182) - pred_arima_182$f)^2)
 ASE_182
 ```
 
 ```{r}
-plotts.sample.wge(fit_365_7$res, arlimits = TRUE)
+plotts.sample.wge(fit_7$res, arlimits = TRUE)
 ```
 
 ```{r}
-roll.win.rmse.wge(b365_7, phi = fit_365_7$phi, horizon = 7)
-roll.win.rmse.wge(b365_7, phi = fit_365_7$phi, horizon = 182)
+roll.win.rmse.wge(b7, phi = fit_7$phi, horizon = 7)
+roll.win.rmse.wge(b7, phi = fit_7$phi, horizon = 182)
 ```
 
 # VAR Model
@@ -203,7 +202,6 @@ VAR_Select_Bikeshare
 ```
 
 ```{r}
-
 # Create the VAR model
 VAR_BikeSharing = VAR(cbind(TotalCust, BikeSharingDF), lag.max = 10, type = "both", p = 9)
 
@@ -214,13 +212,13 @@ pred_VAR_182 = predict(VAR_BikeSharing, n.ahead = 182)
 
 ```{r}
 # Plot the actual vs predicted 'total_cust'
-plot(BikeSharing$total_cust, type = "l", main = "Total Customers: Actual vs Predicted", xlab = "Time", ylab = "Total Customers", xlim = c(2800, nrow(BikeSharing)))
+plot(BikeSharing$total_cust, type = "l", main = "Total Customers: Actual vs Predicted 1 Week Forecast VAR", xlab = "Time", ylab = "Total Customers", xlim = c(2800, nrow(BikeSharing)))
 lines((nrow(BikeSharing) - 6):nrow(BikeSharing), pred_VAR_7$fcst$TotalCust[,1], col = "red")
 ```
 
 ```{r}
 # Plot the actual vs predicted 'total_cust' zoomed in on the last 1/6th of the timeline
-plot(BikeSharing$total_cust, type = "l", main = "Total Customers: Actual vs Predicted", xlab = "Time", ylab = "Total Customers", xlim = c(2500, nrow(BikeSharing)))
+plot(BikeSharing$total_cust, type = "l", main = "Total Customers: Actual vs Predicted 26 Week Forecast VAR", xlab = "Time", ylab = "Total Customers", xlim = c(2500, nrow(BikeSharing)))
 lines((nrow(BikeSharing) - 181):nrow(BikeSharing), pred_VAR_182$fcst$TotalCust[,1], col = "red")
 ```
 
@@ -256,7 +254,7 @@ plot(fore_mlp_182)
 
 ```{r}
 # Plot the actual 'total_cust' values
-plot(BikeSharing$total_cust, type = "l", main = "Total Customers: Actual vs Predicted", xlab = "Time", ylab = "Total Customers", xlim = c(2500, nrow(BikeSharing)))
+plot(BikeSharing$total_cust, type = "l", main = "Total Customers: Actual vs Predicted 26 Week Forecast MLP", xlab = "Time", ylab = "Total Customers", xlim = c(2500, nrow(BikeSharing)))
 
 # Add the MLP forecasted 'total_cust' values
 lines((nrow(BikeSharing) - 181):nrow(BikeSharing), fore_mlp_182$mean, col = "red")
@@ -264,7 +262,7 @@ lines((nrow(BikeSharing) - 181):nrow(BikeSharing), fore_mlp_182$mean, col = "red
 
 ```{r}
 # Plot the actual 'total_cust' values
-plot(BikeSharing$total_cust, type = "l", main = "Total Customers: Actual vs Predicted", xlab = "Time", ylab = "Total Customers", xlim = c(2800, nrow(BikeSharing)))
+plot(BikeSharing$total_cust, type = "l", main = "Total Customers: Actual vs Predicted 1 Week Forecast MLP", xlab = "Time", ylab = "Total Customers", xlim = c(2800, nrow(BikeSharing)))
 
 # Add the MLP forecasted 'total_cust' values
 lines((nrow(BikeSharing) - 6):nrow(BikeSharing), fore_mlp_7$mean, col = "red")
@@ -281,11 +279,16 @@ print(ASE_mlp_7)
 # Ensemble
 
 ```{r}
+fit_ar = est.ar.wge(BikeSharing$total_cust, p = 8)
+preds_ar_182 = fore.arma.wge(BikeSharing$total_cust,
+    phi = fit_ar$phi, n.ahead = 182,
+    lastn = TRUE, limits = FALSE)
+
 #Ensemble
-ensemble_182 = (pred_VAR_182$fcst$TotalCust[, 1] + fore_mlp_182$mean) / 3
+ensemble_182 = (pred_VAR_182$fcst$TotalCust[, 1] + fore_mlp_182$mean + preds_ar_182$f) / 3
 
 #Plot
-plot(BikeSharing$total_cust, type = "l", xlim = c(2500, nrow(BikeSharing)), ylab = "Total Customers: Actual vs Predicted", main = "26 Week Customer Forecast")
+plot(BikeSharing$total_cust, type = "l", xlim = c(2500, nrow(BikeSharing)), ylab = "Total Customers", main = "Total Customers: Actual vs Predicted 26 Week Customer Forecast Ensemble")
 lines((nrow(BikeSharing) - 181):nrow(BikeSharing), ensemble_182, type = "l", col = "red")
 
 ASE_ensemble_182 = mean((tail(BikeSharing$total_cust, 182) - ensemble_182)^2)
@@ -293,23 +296,17 @@ ASE_ensemble_182
 ```
 
 ```{r}
+preds_ar_7 = fore.arma.wge(BikeSharing$total_cust,
+    phi = fit_ar$phi, n.ahead = 7,
+    lastn = TRUE, limits = FALSE)
+
 #Ensemble
-ensemble_7 = (pred_VAR_7$fcst$TotalCust[, 1] + fore_mlp_7$mean) / 3
+ensemble_7 = (pred_VAR_7$fcst$TotalCust[, 1] + fore_mlp_7$mean + preds_ar_7$f) / 3
 
 #Plot
-plot(BikeSharing$total_cust, type = "l", xlim = c(2800, nrow(BikeSharing)), ylab = "Total Customers: Actual vs Predicted 1 Week Forecast", main = "1 Week Customer Forecast")
+plot(BikeSharing$total_cust, type = "l", xlim = c(2800, nrow(BikeSharing)), ylab = "Total Customers", main = "Total Customers: Actual vs Predicted 1 Week Customer Forecast Ensemble")
 lines((nrow(BikeSharing) - 6):nrow(BikeSharing), ensemble_7, type = "l", col = "red")
 
 ASE_ensemble_7 = mean((tail(BikeSharing$total_cust, 7) - ensemble_7)^2)
 ASE_ensemble_7
-```
-
-```{r}
-# Plot the actual vs predicted 'total_cust'
-plot(BikeSharing$total_cust, type = "l", main = "Total Customers: Actual vs Predicted 26 Week Forecast", xlab = "Time", ylab = "Total Customers", xlim = c(2800, nrow(BikeSharing)))
-lines((nrow(BikeSharing) - 181):nrow(BikeSharing), f, col = "red")
-```
-
-```{r}
-
 ```
