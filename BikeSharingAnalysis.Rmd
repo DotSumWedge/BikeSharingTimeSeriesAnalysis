@@ -20,6 +20,7 @@ library(nnfor)
 library(dplyr)
 library(tidyr)
 library(ggplot2)
+library(plotly)
 ```
 
 ```{r}
@@ -29,6 +30,51 @@ setwd("C:/SMU MS Data Science/TimeSeries/FinalProject/BikeSharingTimeSeriesAnaly
 # Check to confirm that the working directory has been set correctly
 getwd()
 ```
+
+This dataset can be used to forecast demand to avoid oversupply and shortages. It spans from January 1, 2011, until December 31, 2018. Determining new station locations, analyzing movement patterns or planning routes will only be possible with additional data.
+
+date - date with the format yyyy-mm-dd
+temp_avg - average daily temperature in degree Celsius
+temp_min - minimum daily temperature in degree Celsius
+temp_max - maximum daily temperature in degree Celsius
+temp_observ - temperature at the time of observation in degree Celsius
+precip - amount of precipitation in mm
+wind - wind speed in meters per second
+wt_fog - weather type fog, ice fog, or freezing fog (may include heavy fog)
+wt_heavy_fog - weather type heavy fog or heaving freezing fog (not always distinguished from fog)
+wt_thunder - weather type thunder
+wt_sleet - weather type ice pellets, sleet, snow pellets, or small hail
+wt_hail - weather type hail (may include small hail)
+wt_glaze - weather type glaze or rime
+wt_haze - weather type smoke or haze
+wt_drift_snow - weather type blowing or drifting snow
+wt_high_wind - weather type high or damaging winds
+wt_mist - weather type mist
+wt_drizzle - weather type drizzle
+wt_rain - weather type rain (may include freezing rain, drizzle, and freezing drizzle)
+wt_freeze_rain - weather type freezing rain
+wt_snow - weather type snow, snow pellets, snow grains, or ice crystals
+wt_ground_fog - weather type ground fog
+wt_ice_fog - weather type ice fog or freezing fog
+wt_freeze_drizzle - weather type freezing drizzle
+wt_unknown - weather type unknown source of precipitation
+casual - number of unregistered customers
+registered - number of registered customers
+total_cust - sum of registered and casual customers
+holiday - indicates whether the day is a holiday or not
+
+Acknowledgements
+data used to create this dataset was taken from:
+
+Capital Bikeshare for the bike sharing demand,
+NOAA's National Climatic Data Center for weather data,
+DC Department of Human Resources for data on public holidays.
+
+The chosen data set is the bike_sharing_dataset.csv from kaggle: https://www.kaggle.com/datasets/juliajemals/bike-sharing-washington-dc
+
+The chosen response (target) variable is total_cust
+
+Being able to model and predict total_cust can help entities directly involved or adjacent to bike sharing better understand and predict the varying demand to avoid oversupply or shortages. Forecasting future demand can help plan bike maintenance as heavily used bikes break down more often. This information can help inform business decisions, setting prices, and creating effective advertisements. 
 
 ```{r}
 # The chosen data set is the bike_sharing_dataset.csv from kaggle: https://www.kaggle.com/datasets/juliajemals/bike-sharing-washington-dc
@@ -108,6 +154,64 @@ head(BikeSharing$holiday)
 ```
 
 ```{r}
+ggpairs(BikeSharing[, c(28,3,4,5,6,7)])
+```
+
+We will try to experiment to estimate for candidate AR or ARMA model based on AIC and BIC values here. We can observe that AN AR(8) model was picked by both AIC AND BIC and also by the PACF function (Box and jenkins method) we saw evidence of an AR(8) as well.
+
+```{r echo = FALSE}
+# Top AIC was p = 9, q = 4
+aic5.wge(BikeSharing$total_cust, p = 0:12, q = 0:4)
+# Top AIC was p = 8, q = 1
+aic5.wge(BikeSharing$total_cust, p = 0:9, q = 0:2)
+# Top AIC was p = 8, q = 1
+aic5.wge(BikeSharing$total_cust, p = 0:9, q = 0:1)
+# Top AIC was p = 8, q = 0
+aic5.wge(BikeSharing$total_cust, p = 0:9, q = 0:0)
+# Top AIC was p = 8, q = 1
+aic5.wge(BikeSharing$total_cust, p = 0:8, q = 0:2)
+# Top AIC was p = 8, q = 1
+aic5.wge(BikeSharing$total_cust, p = 0:8, q = 0:1)
+# Top AIC was p = 8, q = 0
+aic5.wge(BikeSharing$total_cust, p = 0:8, q = 0:0)
+
+
+# Top BIC was p = 2, q = 1
+aic5.wge(BikeSharing$total_cust, p = 0:12, q = 0:4,type = "bic")
+# Top BIC was p = 2, q = 1
+aic5.wge(BikeSharing$total_cust, p = 0:9, q = 0:2,type = "bic")
+# Top BIC was p = 2, q = 1
+aic5.wge(BikeSharing$total_cust, p = 0:9, q = 0:1,type = "bic")
+# Top BIC was p = 8, q = 0
+aic5.wge(BikeSharing$total_cust, p = 0:9, q = 0:0,type = "bic")
+# Top BIC was p = 2, q = 1
+aic5.wge(BikeSharing$total_cust, p = 0:8, q = 0:2,type = "bic")
+# Top BIC was p = 2, q = 1
+aic5.wge(BikeSharing$total_cust, p = 0:2, q = 0:1,type = "bic")
+# Top BIC was p = 8, q = 0
+aic5.wge(BikeSharing$total_cust, p = 0:8, q = 0:0,type = "bic")
+
+pacf(BikeSharing$total_cust) # suggest an AR(8) model
+```
+
+```{r}
+# transform data
+# Difference the data to until we get a stationary model to check for (1-B)^d
+# we could use the Dickey-Fuller Test he to see if model as evidence for a unit root, but differencing here I do not see visual evidence for a (1-B) term.
+b1=artrans.wge(BikeSharing$total_cust,phi.tr=1)
+#although the data does not look white we do see in the acf that a sinusoidal trend appears
+b7=artrans.wge(BikeSharing$total_cust,phi.tr = c(rep(0,6),1))
+
+# From the below plots there does not seem to be evidence for a (1-B)^d So we will not include this in the model. 
+# The Autocorrelation Function (ACF) plot does not suggest white noise. In a white noise series, we would expect most of the spikes in the ACF plot to fall within the confidence interval (usually represented by blue shaded areas or dashed lines), indicating that there is no significant correlation at different lags.
+
+# However, the acf indicates that there are significant correlations at various lags. This suggests that the time series data exhibits some patterns or relationships between its values at different times, which is not characteristic of white noise.
+
+plotts.sample.wge(b1, arlimits = TRUE)
+plotts.sample.wge(b7, arlimits = TRUE)
+```
+
+```{r}
 # Transform data based off of Sakavas analysis
 b7 = artrans.wge(BikeSharing$total_cust, phi.tr = c(rep(0, 6), 1))
 b7
@@ -119,8 +223,38 @@ b365_7
 plotts.sample.wge(b365_7, arlimits = TRUE)
 ```
 
-```{r}
-head(b365_7)
+Here we will choose an AR(8) still because of the AIC and BIC balance and Box and Jenkins method. And because AR(8) is a simple model.
+
+```{r echo = FALSE}
+# Top AIC was p = 9, q = 0
+aic5.wge(b7, p = 0:12, q = 0)
+# Top AIC was p = 7, q = 2
+aic5.wge(b7, p = 0:9, q = 0:2)
+# Top AIC was p = 9, q = 0
+aic5.wge(b7, p = 0:9, q = 0:1)
+# Top AIC was p = 9, q = 0
+aic5.wge(b7, p = 0:9, q = 0:0)
+# Top AIC was p = 7, q = 2
+aic5.wge(b7, p = 0:8, q = 0:2)
+# Top AIC was p = 8, q = 1
+aic5.wge(b7, p = 0:8, q = 0:1)
+# Top AIC was p = 8, q = 0
+aic5.wge(b7, p = 0:8, q = 0:0)
+
+# Top BIC was p = 8, q = 0
+aic5.wge(b7, p = 0:12, q = 0,type = "bic")
+# Top BIC was p = 8, q = 0
+aic5.wge(b7, p = 0:9, q = 0:2,type = "bic")
+# Top BIC was p = 8, q = 0
+aic5.wge(b7, p = 0:9, q = 0:1,type = "bic")
+# Top BIC was p = 8, q = 0
+aic5.wge(b7, p = 0:9, q = 0:0,type = "bic")
+# Top BIC was p = 8, q = 0
+aic5.wge(b7, p = 0:8, q = 0:2,type = "bic")
+# Top BIC was p = 1, q = 0
+aic5.wge(b7, p = 0:2, q = 0:1,type = "bic")
+# Top BIC was p = 8, q = 0
+aic5.wge(b7, p = 0:8, q = 0:0,type = "bic")
 ```
 
 # ARIMA Modle
@@ -131,6 +265,9 @@ fit_7 = est.ar.wge(b7, p = 8)
 pred_arima_7 = fore.arma.wge(BikeSharing$total_cust,
     phi = fit_7$phi, n.ahead = 7,
     lastn = TRUE, limits = FALSE)
+
+plotts.sample.wge(fit_7$res, arlimits = TRUE)
+ljung.wge(fit_7$res, p = 8)
 ```
 
 ```{r}
@@ -157,10 +294,6 @@ roll.win.rmse.wge(b7, phi = fit_7$phi, horizon = 182)
 ```
 
 # VAR Model
-
-```{r}
-head(BikeSharing)
-```
 
 ```{r}
 colnames(BikeSharing)
@@ -309,4 +442,8 @@ lines((nrow(BikeSharing) - 6):nrow(BikeSharing), ensemble_7, type = "l", col = "
 
 ASE_ensemble_7 = mean((tail(BikeSharing$total_cust, 7) - ensemble_7)^2)
 ASE_ensemble_7
+```
+
+```{r}
+?VAR
 ```
