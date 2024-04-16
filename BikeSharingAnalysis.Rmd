@@ -293,12 +293,110 @@ roll.win.rmse.wge(b7, phi = fit_7$phi, horizon = 7)
 roll.win.rmse.wge(b7, phi = fit_7$phi, horizon = 182)
 ```
 
-# VAR Model
+```{r}
+
+#Forecasting with ARUMA model here such that ARUMA(p,d,q) with s=7
+f = fore.arima.wge(BikeSharing$total_cust, s=7, phi = fit_7$phi, n.ahead = 182, limits =  F, lastn = T, plot=TRUE)
+
+# Plot the actual vs predicted 'total_cust'
+plot(BikeSharing$total_cust, type = "l", main = "Total Customers: Actual vs Predicted 26 weeks", xlab = "Time", ylab = "Total Customers", xlim = c(2500, nrow(BikeSharing)))
+lines((nrow(BikeSharing) - 181):nrow(BikeSharing), f$f, col = "red")
+
+#Forecasting with SARIMA model here such that ARIMA(p,d,q) with s=7
+f2 = fore.arima.wge(BikeSharing$total_cust, s=7, phi = fit_7$phi, n.ahead = 7, limits =  F, lastn = T, plot=TRUE)
+
+# Plot the actual vs predicted 'total_cust'
+plot(BikeSharing$total_cust, type = "l", main = "Total Customers: Actual vs Predicted one week", xlab = "Time", ylab = "Total Customers", xlim = c(2800, nrow(BikeSharing)))
+lines((nrow(BikeSharing) - 6):nrow(BikeSharing), f2$f, col = "red")
+```
+
+### Additional methods to check to see if (1-B^7) term makes sense and is useful
+- Overfitting method
+- overlaying plots while comparing for Spectral density, ACF, and realizations
 
 ```{r}
-colnames(BikeSharing)
-which(is.na(BikeSharing$temp_min))
+
+#compare overfit estimated table with the season factor table of S =7 => observe that when comparing the tables we see some evidence of an S=7, although the estimates are not that strongly matching the (1-B^7) factor tables
+esttable=est.ar.wge(BikeSharing$total_cust,p = 12,method='burg') #overfit for seasonality s= 7
+# estimate parameters of stationary part
+b7table = factor.wge(c(rep(0,6),1)) #1-B^7 table
+#factor.wge(c(rep(0,9),1)) #1-B^10
+
+
+###################################
+
+#Compare Spectral Densities
+sims = 30
+SpecDen = parzen.wge(BikeSharing$total_cust, plot = "FALSE")
+plot(SpecDen$freq,SpecDen$pzgram, type = "l", lwd = 6)
+
+for( i in 1: sims)
+{
+   SpecDen2 = parzen.wge(gen.arima.wge(319, s=7, phi = fit_7$phi, plot ="FALSE"), plot ="FALSE")
+   lines(SpecDen2$freq,SpecDen2$pzgram, lwd = 2, col = "red")
+}
+
+
+#Compare ACFs
+sims = 30
+ACF = acf(BikeSharing$total_cust, plot = "FALSE")
+plot(ACF$lag ,ACF$acf , type = "l", lwd = 6)
+
+for( i in 1: sims)
+{
+   ACF2 = acf(gen.arima.wge(319, s = 7, phi = fit_7$phi, plot ="FALSE"), plot ="FALSE")
+   lines(ACF2$lag ,ACF2$acf, lwd = 2, col = "red")
+}
+
+#Compare Generated Realizations 
+S10AR3gen = gen.arima.wge(319,s = 7,phi = fit_7$phi, vara = fit_7$avar)
+
+# Set the number of realizations
+sims <- 1
+
+# Generate and plot the first realization to establish the plot
+S10AR3gen <- gen.arima.wge(319, s = 7, phi = fit_7$phi, vara = fit_7$avar)
+plot(S10AR3gen, type = "l", lwd = 2)
+
+# Generate and plot additional realizations in different colors
+for(i in 1:sims) 
+{
+
+   S10AR3gen_new <- gen.arima.wge(319, s = 7, phi = fit_7$phi, vara = fit_7$avar, plot = "FALSE")
+   lines(S10AR3gen_new,col = "red", lwd = 2)
+}
+
+plotts.sample.wge(S10AR3gen)
+
 ```
+
+###  Zoom in the last 182 values to see how the generated realizations fit.
+
+```{r}
+
+# Assuming BikeSharing$total_cust is your time series object
+# Select the last 182 values <=> about 26 weeks = 182 days
+last_26weeks_values <- tail(BikeSharing$total_cust, 182)
+
+# Now you can use last_60_values in your analysis or plotting
+# For example, if you want to plot these values:
+plot.ts(last_26weeks_values)
+
+# Set the number of realizations
+sims <- 1
+# Generate and plot the first realization to establish the plot
+S10AR3gen <- gen.arima.wge(319, s = 7, phi = fit_7$phi, vara = fit_7$avar)
+plot(tail(S10AR3gen, 182), type = "l", lwd = 3) # Plot only the last 60 values
+
+# Generate and plot additional realizations in red
+for(i in 1:sims) {
+   S10AR3gen_new <- gen.arima.wge(319, s = 7, phi = fit_7$phi, vara = fit_7$avar, plot = "FALSE")
+   lines(tail(S10AR3gen_new, 182), col = "red", lwd = 2) # Plot only the last 60 values
+}
+
+```
+
+# VAR Model
 
 ```{r}
 no_missing_values = apply(BikeSharing, 2, function(x) all(complete.cases(x)))
@@ -309,6 +407,21 @@ colnames(BikeSharing)
 # Columns with no missing values
 print(columns_no_missing)
 # date, total_cust, temp_min, temp_max, temp_observ, precip, wind
+```
+
+```{r}
+data <- data.frame(x = is.na(BikeSharing$wt_rain))
+
+gg <- ggplot(data, aes(x = 1:nrow(data), y = x)) +
+  geom_point(size = 1, height = .5, width = .5, color = "red") +
+  xlab("days by row number") +
+ ylab("wt_rain Values Present or Missing") +
+ labs(title = "Scatter Plot of Missing wt_rain Values", size = 10) +
+ scale_y_discrete(labels = c("Present", "Missing")) +
+ scale_x_continuous(breaks = seq(0, nrow(data), by = 100)) +
+ theme(axis.text.x = element_text(angle = 90, hjust  = 1)) + 
+ theme_classic()
+gg
 ```
 
 ```{r}
@@ -442,8 +555,4 @@ lines((nrow(BikeSharing) - 6):nrow(BikeSharing), ensemble_7, type = "l", col = "
 
 ASE_ensemble_7 = mean((tail(BikeSharing$total_cust, 7) - ensemble_7)^2)
 ASE_ensemble_7
-```
-
-```{r}
-?VAR
 ```
