@@ -1,0 +1,788 @@
+---
+title: "BikeSharingAnalysis"
+author: "Sakava Kiv and Derek Rogers"
+date: "2024-04-17"
+output: html_document
+---
+
+Video giving a brief overview of the project:
+https://youtu.be/-8qr3vHpIak
+
+Project Repo: https://github.com/DotSumWedge/BikeSharingTimeSeriesAnalysis
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tswge)
+library(PolynomF)
+library(tidyverse)
+library(GGally)
+library(astsa)
+library(vars)
+library(nnfor)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(plotly)
+```
+
+```{r}
+# Set the working directory to the specified path
+#setwd("C:/SMU MS Data Science/TimeSeries/FinalProject/BikeSharingTimeSeriesAnalysis")
+
+# Check to confirm that the working directory has been set correctly
+#getwd()
+```
+
+This dataset can be used to forecast demand to avoid oversupply and shortages. It spans from January 1, 2011, until December 31, 2018. Determining new station locations, analyzing movement patterns or planning routes will only be possible with additional data.
+
+date - date with the format yyyy-mm-dd
+temp_avg - average daily temperature in degree Celsius
+temp_min - minimum daily temperature in degree Celsius
+temp_max - maximum daily temperature in degree Celsius
+temp_observ - temperature at the time of observation in degree Celsius
+precip - amount of precipitation in mm
+wind - wind speed in meters per second
+wt_fog - weather type fog, ice fog, or freezing fog (may include heavy fog)
+wt_heavy_fog - weather type heavy fog or heaving freezing fog (not always distinguished from fog)
+wt_thunder - weather type thunder
+wt_sleet - weather type ice pellets, sleet, snow pellets, or small hail
+wt_hail - weather type hail (may include small hail)
+wt_glaze - weather type glaze or rime
+wt_haze - weather type smoke or haze
+wt_drift_snow - weather type blowing or drifting snow
+wt_high_wind - weather type high or damaging winds
+wt_mist - weather type mist
+wt_drizzle - weather type drizzle
+wt_rain - weather type rain (may include freezing rain, drizzle, and freezing drizzle)
+wt_freeze_rain - weather type freezing rain
+wt_snow - weather type snow, snow pellets, snow grains, or ice crystals
+wt_ground_fog - weather type ground fog
+wt_ice_fog - weather type ice fog or freezing fog
+wt_freeze_drizzle - weather type freezing drizzle
+wt_unknown - weather type unknown source of precipitation
+casual - number of unregistered customers
+registered - number of registered customers
+total_cust - sum of registered and casual customers
+holiday - indicates whether the day is a holiday or not
+
+Acknowledgements
+data used to create this dataset was taken from:
+
+Capital Bikeshare for the bike sharing demand,
+NOAA's National Climatic Data Center for weather data,
+DC Department of Human Resources for data on public holidays.
+
+The chosen data set is the bike_sharing_dataset.csv from kaggle: https://www.kaggle.com/datasets/juliajemals/bike-sharing-washington-dc
+
+The chosen response (target) variable is total_cust
+
+Being able to model and predict total_cust can help entities directly involved or adjacent to bike sharing better understand and predict the varying demand to avoid oversupply or shortages. Forecasting future demand can help plan bike maintenance as heavily used bikes break down more often. This information can help inform business decisions, setting prices, and creating effective advertisements. 
+
+```{r}
+# The chosen data set is the bike_sharing_dataset.csv from kaggle: https://www.kaggle.com/datasets/juliajemals/bike-sharing-washington-dc
+# The chosen response variable is total_cust
+# Being able to model and predict total_cust can help entities directly involved or adjacent to bike sharing better understand and predict the varying demand to avoid oversupply or shortages. Forecasting future demand can help plan bike maintance as heavily used bikes break down more often. This information can help inform business decisions, setting prices, and creating efective advertisements. 
+
+BikeSharing = read.csv("bike_sharing_dataset.csv", header = TRUE)
+BikeSharing_train = data.frame(TotalCust = ts(BikeSharing$total_cust))
+
+head(BikeSharing)
+nrow(BikeSharing)
+
+# There are 4 consecutive missing values
+which(is.na(BikeSharing$total_cust))
+```
+
+## Data Cleaning
+
+```{r}
+# Impute the 4 consecutive missing values with the average of the value before and after the missing values
+
+# Calculate the average of the values at positions 1848 and 1853
+average_value = mean(c(BikeSharing$total_cust[1848], BikeSharing$total_cust[1853]), na.rm = TRUE)
+average_value
+
+# Assign the average value to the missing positions 1849, 1850, 1851, and 1852
+BikeSharing$total_cust[1849:1852] = average_value
+
+# Optionally, you can verify the imputation by checking the values at these positions
+BikeSharing$total_cust[1848:1853]
+
+# Plot around where the imputed values are
+plot(BikeSharing$total_cust[1838:1863], type = "l")
+```
+
+## Plot the Data
+
+```{r}
+# Plot the full dataset
+
+# The realization plot shows strong periodic trends, wandering behavior, and variance that changes over time.
+
+# We see slowly dampening autocorrelation with weak and an irregular length periodic behavior.
+
+# There is a peak at zero in the parzen frequency window.
+# The parzen window also shows a peak around 0.15, which is a period of 1/0.15 = 6.666. 
+#   B/c this data is collected daily, there evidence to suggest a weekly trend.
+#   We can hypothesize total_cust could have a greater total_cust on the weekends when all other variables are held constant. 
+plotts.sample.wge(BikeSharing$total_cust, arlimits = TRUE)
+```
+
+## Seeing if Lags are available
+
+```{r}
+# The CCF plot shows a log of 1 for precipitation. This makes sense a we might expect less people to rent a bike the day after it rains.
+ccf(BikeSharing$precip, BikeSharing$total_cust)
+```
+
+```{r}
+BikeSharing$precip_L1 = dplyr::lag(BikeSharing$precip, 1)
+BikeSharing$precip_L1[is.na(BikeSharing$precip_L1)] = median(BikeSharing$precip_L1, na.rm = TRUE)
+```
+
+## Checking For MCAR
+
+```{r}
+# Shows the present and missing values are represented consistently throughout the plot, giving evidence the NA value can be translated to 0 and be interpreted as non holidays.
+data <- data.frame(x = is.na(BikeSharing$holiday))
+gg = ggplot(data, aes(x = 1:nrow(data), y = x)) +
+  geom_point(size = 1, height = .5, width = .5, color = "red") +
+  xlab("days by row number") +
+ ylab("wt_rain Values Present or Missing") +
+ labs(title = "Scatter Plot of Missing wt_rain Values", size = 10) +
+ scale_y_discrete(labels = c("Present", "Missing")) +
+ scale_x_continuous(breaks = seq(0, nrow(data), by = 100)) +
+ theme(axis.text.x = element_text(angle = 90, hjust  = 1)) + 
+ theme_classic()
+gg
+```
+
+```{r}
+# Replace NA with 0 which represents non holidays, 1 represents holidays
+BikeSharing$holiday = replace_na(BikeSharing$holiday, 0)
+head(BikeSharing$holiday)
+```
+
+## Explore correlations for the data
+
+```{r}
+ggpairs(BikeSharing[, c(28,3,4,5,6,7,29)])
+```
+
+We will try to experiment to estimate for candidate AR or ARMA model based on AIC and BIC values here. We can observe that AN AR(8) model was picked by both AIC AND BIC and also by the PACF function (Box and jenkins method) we saw evidence of an AR(8) as well.
+
+```{r echo = FALSE}
+# Top AIC was p = 9, q = 4
+#aic5.wge(BikeSharing$total_cust, p = 0:12, q = 0:4)
+# Top AIC was p = 8, q = 1
+#aic5.wge(BikeSharing$total_cust, p = 0:9, q = 0:2)
+# Top AIC was p = 8, q = 1
+#aic5.wge(BikeSharing$total_cust, p = 0:9, q = 0:1)
+# Top AIC was p = 8, q = 0
+#aic5.wge(BikeSharing$total_cust, p = 0:9, q = 0:0)
+# Top AIC was p = 8, q = 1
+#aic5.wge(BikeSharing$total_cust, p = 0:8, q = 0:2)
+# Top AIC was p = 8, q = 1
+#aic5.wge(BikeSharing$total_cust, p = 0:8, q = 0:1)
+# Top AIC was p = 8, q = 0
+aic5.wge(BikeSharing$total_cust, p = 0:8, q = 0:0)
+
+
+# Top BIC was p = 2, q = 1
+#aic5.wge(BikeSharing$total_cust, p = 0:12, q = 0:4,type = "bic")
+# Top BIC was p = 2, q = 1
+#aic5.wge(BikeSharing$total_cust, p = 0:9, q = 0:2,type = "bic")
+# Top BIC was p = 2, q = 1
+#aic5.wge(BikeSharing$total_cust, p = 0:9, q = 0:1,type = "bic")
+# Top BIC was p = 8, q = 0
+#aic5.wge(BikeSharing$total_cust, p = 0:9, q = 0:0,type = "bic")
+# Top BIC was p = 2, q = 1
+#aic5.wge(BikeSharing$total_cust, p = 0:8, q = 0:2,type = "bic")
+# Top BIC was p = 2, q = 1
+#aic5.wge(BikeSharing$total_cust, p = 0:2, q = 0:1,type = "bic")
+# Top BIC was p = 8, q = 0
+aic5.wge(BikeSharing$total_cust, p = 0:8, q = 0:0,type = "bic")
+
+```
+
+### Box and Jenkins Method to identifY AR(p) using PACF function plot
+
+```{r}
+pacf(BikeSharing$total_cust) # suggest an AR(8) model
+```
+
+Observe that from the code above by running the estimate for p and q for both AIC and BIC for ranges of P and Q of my choosing that make sense, I will probably go with an AR(8) since this seems to strike a balance between the AIC and BIC values. 
+
+And checking with PACF function we see evidence of an AR(8) model. 
+
+Next We will see what happens if I apply a transformation for S=7 and S=365 to see if these are useful.  
+
+I will also check for any (1-B)^d term.
+
+Note to self: 
+It is not a good idea to just look at the factor tables. Look at the data, look at the realizations, look at the ACFs, and look at the factor tables, and together you can gather a lot of information to find the most useful model. So before and after differencing. So you should check all these out before and after differences.
+
+```{r}
+# transform data
+# Difference the data to until we get a stationary model to check for (1-B)^d
+# we could use the Dickey-Fuller Test he to see if model as evidence for a unit root, but differencing here I do not see visual evidence for a (1-B) term.
+b1=artrans.wge(BikeSharing$total_cust,phi.tr=1)
+#although the data does not look white we do see in the acf that a sinusoidal trend appears
+b7=artrans.wge(BikeSharing$total_cust,phi.tr = c(rep(0,6),1))
+
+```
+
+From the below plots there does not seem to be evidence for a (1-B)^d So we will not include this in the model. 
+The Autocorrelation Function (ACF) plot does not suggest white noise. In a white noise series, we would expect most of the spikes in the ACF plot to fall within the confidence interval (usually represented by blue shaded areas or dashed lines), indicating that there is no significant correlation at different lags.
+
+However, the acf indicates that there are significant correlations at various lags. This suggests that the time series data exhibits some patterns or relationships between its values at different times, which is not characteristic of white noise.
+
+```{r}
+plotts.sample.wge(b1, arlimits = TRUE)
+plotts.sample.wge(b7, arlimits = TRUE)
+```
+
+### Transform data
+
+```{r}
+# transform data
+# Difference the data to until we get a stationary model to check for (1-B^S) i.e (1-B^7) and (1-B^365)
+
+#difference the data for (1-B^7) fit
+#although the data does not look white we do see in the acf that a sinusoidal trend appears
+b7=artrans.wge(BikeSharing$total_cust,phi.tr = c(rep(0,6),1))
+
+#difference the data furthur with (1-B^365) fit
+b7_365=artrans.wge(b7,phi.tr = c(rep(0,364),1)) #after doing this the data appears to be more like white noise indicating a stationary model so adding a (1-B^7) and (1-B^365) to our model would be useful.
+b7_365_1=artrans.wge(b7_365,phi.tr=1)
+# estimate parameters of stationary part
+#est.7.365=est.ar.wge(b7_365,p=8)
+#est.7.365.1=est.ar.wge(b7_365_1,p=8)
+#est.7.365
+#est.7.365$res
+
+```
+
+
+### Estimate the phis for the (1-B^7) differenced data.
+
+```{r}
+
+est.7=est.ar.wge(b7,p=8)
+
+```
+
+
+### find a P and q for the (1-B^7) differeenced data 
+
+Here we will choose an AR(8) still because of the AIC and BIC balance and Box and Jenkins method. And because AR(8) is a simple model.
+
+```{r echo = FALSE}
+# Top AIC was p = 9, q = 0
+#aic5.wge(b7, p = 0:12, q = 0)
+# Top AIC was p = 7, q = 2
+#aic5.wge(b7, p = 0:9, q = 0:2)
+# Top AIC was p = 9, q = 0
+#aic5.wge(b7, p = 0:9, q = 0:1)
+# Top AIC was p = 9, q = 0
+#aic5.wge(b7, p = 0:9, q = 0:0)
+# Top AIC was p = 7, q = 2
+#aic5.wge(b7, p = 0:8, q = 0:2)
+# Top AIC was p = 8, q = 1
+#aic5.wge(b7, p = 0:8, q = 0:1)
+# Top AIC was p = 8, q = 0
+aic5.wge(b7, p = 0:8, q = 0:0)
+
+# Top BIC was p = 8, q = 0
+aic5.wge(b7, p = 0:12, q = 0,type = "bic")
+# Top BIC was p = 8, q = 0
+#aic5.wge(b7, p = 0:9, q = 0:2,type = "bic")
+# Top BIC was p = 8, q = 0
+#aic5.wge(b7, p = 0:9, q = 0:1,type = "bic")
+# Top BIC was p = 8, q = 0
+#aic5.wge(b7, p = 0:9, q = 0:0,type = "bic")
+# Top BIC was p = 8, q = 0
+#aic5.wge(b7, p = 0:8, q = 0:2,type = "bic")
+# Top BIC was p = 1, q = 0
+#aic5.wge(b7, p = 0:2, q = 0:1,type = "bic")
+# Top BIC was p = 8, q = 0
+#aic5.wge(b7, p = 0:8, q = 0:0,type = "bic")
+```
+
+Box and jenkins method for identifiyin AR(P)
+
+```{r}
+
+pacf(BikeSharing$total_cust) # suggest an AR(8) model
+
+```
+
+### we will now estimate the phis using burg method on the difference (1-B^7) Bikeshare data.
+AIC and BIC Selects an AR(8), and the final model is:
+phi_subs8(B)(1-B^7)X_t = at,
+Where phisubs8(B) = 1-0.4043 - 0.0180B^2 - 0.0225B^3- 0.0428B^4 + 0.0060B^5 - 0.0304B^6 + 0.5069B^7 - 0.2151B^8
+and Sigmahat_a^2 = 4374309 
+
+```{r}
+est.7=est.ar.wge(b7,p=8, method = 'burg')
+
+```
+
+### Check for White noise
+
+
+```{r}
+
+#step 1 visual test => data seems to be non stationary
+plot.ts(est.7$res)
+
+
+#from this sample plot we can see in the ACF evidence for s=7, since we see peaks at the lags 7,14, and around 21
+plotts.sample.wge(est.7$res, arlimits = TRUE)
+
+#difference the data for (1-B^7) fit
+#although the data does not look white we do see in the acf that a sinusoidal trend appears
+#b7=artrans.wge(BikeSharing$total_cust,phi.tr = c(rep(0,6),1))
+
+# get the phis 
+est.7$phi
+
+#run ljung test for white noise, visually we saw that there was evidence against white noise.
+ljung.wge(est.7$res,p=8) 
+
+ljung.wge(est.7$res,K=48,p=8)
+
+```
+
+### Forecast 26 weeks (182 days) ahead and one week ahead (7 days) with ASE values
+
+```{r}
+
+#Forecasting with ARUMA model here such that ARUMA(p,d,q) with s=7
+f = fore.arima.wge(BikeSharing$total_cust, s=7, phi = est.7$phi, n.ahead = 182, limits =  F, lastn = T, plot=TRUE)
+
+#f
+
+ASE = mean((BikeSharing$total_cust[(length(BikeSharing$total_cust)-181):length(BikeSharing$total_cust)] - f$f)^2)
+#ASE 21760890 so this model although it is on the higher end, it has it merits in being simple without
+ASE
+
+# Plot the actual vs predicted 'total_cust'
+plot(BikeSharing$total_cust, type = "l", main = "Total Customers: Actual vs Predicted 26 weeks", xlab = "Time", ylab = "Total Customers", xlim = c(2800, nrow(BikeSharing)))
+lines((nrow(BikeSharing) - 181):nrow(BikeSharing), f$f, col = "red")
+
+#Forecasting with SARIMA model here such that ARIMA(p,d,q) with s=7
+f2 = fore.arima.wge(BikeSharing$total_cust, s=7, phi = est.7$phi, n.ahead = 7, limits =  F, lastn = T, plot=TRUE)
+
+#f2
+
+# Plot the actual vs predicted 'total_cust'
+plot(BikeSharing$total_cust, type = "l", main = "Total Customers: Actual vs Predicted One Week", xlab = "Time", ylab = "Total Customers", xlim = c(2800, nrow(BikeSharing)))
+lines((nrow(BikeSharing) - 6):nrow(BikeSharing), f2$f, col = "red")
+
+
+
+ASE = mean((BikeSharing$total_cust[(length(BikeSharing$total_cust)-6):length(BikeSharing$total_cust)] - f2$f)^2)
+#ASE 8932177 best performing
+ASE
+```
+
+### Additional methods to check to see if (1-B^7) term makes sense and is useful
+- Overfitting method
+- overlaying plots while comparing for Spectral density, ACF, and realizations
+
+```{r}
+
+#compare overfit estimated table with the season factor table of S =7 => observe that when comparing the tables we see some evidence of an S=7, although the estimates are not that #strongly matching the (1-B^7) factor tables
+esttable=est.ar.wge(BikeSharing$total_cust,p = 12,method='burg') #overfit for seasonality s= 7
+# estimate parameters of stationary part
+b7table = factor.wge(c(rep(0,6),1)) #1-B^7 table
+#factor.wge(c(rep(0,9),1)) #1-B^10
+
+
+###################################
+
+#Compare Spectral Densities
+sims = 30
+SpecDen = parzen.wge(BikeSharing$total_cust, plot = "FALSE")
+plot(SpecDen$freq,SpecDen$pzgram, type = "l", lwd = 6)
+
+for( i in 1: sims)
+{
+   SpecDen2 = parzen.wge(gen.arima.wge(319, s=7, phi = est.7$phi, plot ="FALSE"), plot ="FALSE")
+   lines(SpecDen2$freq,SpecDen2$pzgram, lwd = 2, col = "red")
+}
+
+
+#Compare ACFs
+sims = 30
+ACF = acf(BikeSharing$total_cust, plot = "FALSE")
+plot(ACF$lag ,ACF$acf , type = "l", lwd = 6)
+
+for( i in 1: sims)
+{
+   ACF2 = acf(gen.arima.wge(319, s = 7, phi = est.7$phi, plot ="FALSE"), plot ="FALSE")
+   lines(ACF2$lag ,ACF2$acf, lwd = 2, col = "red")
+}
+
+#Compare Generated Realizations 
+S10AR3gen = gen.arima.wge(319,s = 7,phi = est.7$phi, vara = est.7$avar)
+
+# Set the number of realizations
+sims <- 1
+
+# Generate and plot the first realization to establish the plot
+S10AR3gen <- gen.arima.wge(319, s = 7, phi = est.7$phi, vara = est.7$avar)
+plot(S10AR3gen, type = "l", lwd = 2)
+
+# Generate and plot additional realizations in different colors
+for(i in 1:sims) 
+{
+
+   S10AR3gen_new <- gen.arima.wge(319, s = 7, phi = est.7$phi, vara = est.7$avar, plot = "FALSE")
+   lines(S10AR3gen_new,col = "red", lwd = 2)
+}
+
+plotts.sample.wge(S10AR3gen)
+
+```
+
+###  Zoom in the last 182 values to see how the generated realizations fit.
+
+```{r}
+
+# Assuming BikeSharing$total_cust is your time series object
+# Select the last 182 values <=> about 26 weeks = 182 days
+last_26weeks_values <- tail(BikeSharing$total_cust, 182)
+
+# Now you can use last_60_values in your analysis or plotting
+# For example, if you want to plot these values:
+plot.ts(last_26weeks_values)
+
+# Set the number of realizations
+sims <- 1
+# Generate and plot the first realization to establish the plot
+S10AR3gen <- gen.arima.wge(319, s = 7, phi = est.7$phi, vara = est.7$avar)
+plot(tail(S10AR3gen, 182), type = "l", lwd = 3) # Plot only the last 60 values
+
+# Generate and plot additional realizations in red
+for(i in 1:sims) {
+   S10AR3gen_new <- gen.arima.wge(319, s = 7, phi = est.7$phi, vara = est.7$avar, plot = "FALSE")
+   lines(tail(S10AR3gen_new, 182), col = "red", lwd = 2) # Plot only the last 60 values
+}
+
+```
+
+# AR/ARIMA MODELS
+
+
+```{r}
+# Find ASE for a 26 weeks forecast AR(8) model has an ASE second best so far 10965412
+fit_ar = est.ar.wge(BikeSharing$total_cust, p = 8)
+preds_arma = fore.arma.wge(BikeSharing$total_cust,
+    phi = fit_ar$phi, n.ahead = 182,
+    lastn = TRUE, limits = FALSE)
+
+ASE = mean((tail(BikeSharing$total_cust, 182) - preds_arma$f)^2)
+ASE #10965412
+
+# Plot the actual vs predicted 'total_cust' for 7 day forcast
+plot(BikeSharing$total_cust, type = "l", main = "Total Customers: Actual vs Predicted 26 weeks", xlab = "Time", ylab = "Total Customers", xlim = c(2800, nrow(BikeSharing)))
+lines((nrow(BikeSharing) - 181):nrow(BikeSharing), preds_arma$f, col = "red")
+
+
+###############
+
+# Find ASE for a 1 weeks forecast AR(8) model has an ASE best so far 3095643
+fit_ar = est.ar.wge(BikeSharing$total_cust, p = 8)
+preds_arma = fore.arma.wge(BikeSharing$total_cust,
+    phi = fit_ar$phi, n.ahead = 7,
+    lastn = TRUE, limits = FALSE)
+
+ASE = mean((tail(BikeSharing$total_cust, 7) - preds_arma$f)^2)
+ASE #3095643
+
+# Plot the actual vs predicted 'total_cust' for 7 day forcast for an AR(8) model
+plot(BikeSharing$total_cust, type = "l", main = "Total Customers: Actual vs Predicted one week", xlab = "Time", ylab = "Total Customers", xlim = c(2800, nrow(BikeSharing)))
+lines((nrow(BikeSharing) - 6):nrow(BikeSharing), preds_arma$f, col = "red")
+
+
+################
+
+# ARUMA (8,0,0) S = 7 for 26 weeks
+f26w = fore.arima.wge(BikeSharing$total_cust, s=7, phi = est.7$phi, n.ahead = 182, limits =  T, lastn = T, plot=TRUE)
+#ASE = mean((BikeSharing$total_cust[(length(BikeSharing$total_cust)-181):length(BikeSharing$total_cust)] - f6m$f)^2)
+#ASE
+
+# ARUMA (8,0,0) S = 7 for 26 weeks
+f365w = fore.arima.wge(BikeSharing$total_cust, s=7, phi = est.7$phi, n.ahead = 365, limits =  T, lastn = F, plot=TRUE)
+#ASE = mean((BikeSharing$total_cust[(length(BikeSharing$total_cust)-181):length(BikeSharing$total_cust)] - f6m$f)^2)
+#ASE
+
+
+#More concise way to calculate ASE
+ASE = mean((tail(BikeSharing$total_cust, 365) - f26w$f)^2)
+ASE #21760890
+
+
+
+###########
+
+# ARUMA (8,0,0) S = 7 for 1 week forecast
+f1w = fore.arima.wge(BikeSharing$total_cust, s=7, phi = est.7$phi, n.ahead = 7, limits =  F, lastn = T, plot=TRUE)
+#ASE = mean((BikeSharing$total_cust[(length(BikeSharing$total_cust)-181):length(BikeSharing$total_cust)] - f6m$f)^2)
+#ASE
+
+#More concise way to calculate ASE
+ASE = mean((tail(BikeSharing$total_cust, 7) - f1w$f)^2)
+ASE #8932177
+
+# Plot the actual vs predicted 'total_cust' for 7 day forcast for an AR(8) model
+plot(BikeSharing$total_cust, type = "l", main = "Total Customers: Actual vs Predicted one week", xlab = "Time", ylab = "Total Customers", xlim = c(2800, nrow(BikeSharing)))
+lines((nrow(BikeSharing) - 6):nrow(BikeSharing), f1w$f, col = "red")
+
+
+```
+
+## FINAL MODEL ARUMA(8,0,0) S=7
+## (1 - 0.4043B - 0.01801B^2 - 0.0225B^3 - 0.0428B^4 + 0.0060B^5 - 0.0304B^6 + 0.5069B^7 - 0.2151B^8)(1 - B^7)X_t = a_t
+
+### Rolling Window for 1 week for FINAL MODEL ARUMA(8,0,0) S=7 => "The Rolling Window RMSE is:  1973.381"
+## Note ROLLING WINDOW RMSE we cannot get for Multivariate processes, So I only got the rolling window RMSE for the simpler Univariate models.
+
+```{r echo = FALSE}
+
+est.7$phi #gives estimated phis to plug in.
+#roll.win.rmse.wge(BikeSharing$total_cust,phi = c(0.40432768,  0.01801666,  0.02246405,  0.04287993, -0.00599795,  0.03044390, -0.50685544,  0.21513204), s = 7, horizon = 7)
+
+```
+
+### Rolling Window for 26 week for FINAL MODEL ARUMA(8,0,0) S=7 => "The Rolling Window RMSE is:  2274.046"
+
+
+```{r echo = FALSE}
+
+#roll.win.rmse.wge(BikeSharing$total_cust,phi = c(0.40432768,  0.01801666,  0.02246405,  0.04287993, -0.00599795,  0.03044390, -0.50685544,  0.21513204), s = 7, horizon = 26)
+
+```
+
+### Rolling Window for 26 week for MODEL AR(8) => "The Rolling Window RMSE is:  3712.421"
+
+
+```{r echo = FALSE}
+
+#roll.win.rmse.wge(BikeSharing$total_cust,phi = c(0.40432768,  0.01801666,  0.02246405,  0.04287993, -0.00599795,  0.03044390, -0.50685544,  0.21513204),  horizon = 26)
+
+```
+
+### Rolling Window for 1 week for MODEL AR(8) => "The Rolling Window RMSE is:  4229.392"
+
+```{r echo = FALSE}
+
+#roll.win.rmse.wge(BikeSharing$total_cust,phi = c(0.40432768,  0.01801666,  0.02246405,  0.04287993, -0.00599795,  0.03044390, -0.50685544,  0.21513204), horizon = 7)
+
+```
+
+
+### Checking for missing values (MCAR)
+
+```{r echo = FALSE}
+
+library(vars)
+
+
+#Delete all if missing completely at random
+#First we need to check for missing values
+dim(BikeSharing)
+sum(is.na(BikeSharing))
+str(BikeSharing)
+#2516 missing values int eh wt_rain column.
+#sum(is.na(BikeSharing$wt_rain))
+#Example of MCAR idea: The probability of missing does not depend on the data, the covariates.  It is as if the wind blew away records at random and wt_rain all equally likely to by blown away (missing).  List wise Deletion OK and Imputation OK!
+#now we need to determine if the values are missing completely at random, so lets check this by plotting the data visually with a scatter plot
+
+
+#We can observe from this scatter plot that the wt_rain values that are missing for the beers are spread out over the many present ones in this data set. This suggests that the data is missing completely at random so we do not need to include those wt_rain.
+
+library(ggplot2)
+library(plotly)
+
+data <- data.frame(x = is.na(BikeSharing$wt_rain))
+
+
+gg <- ggplot(data, aes(x = 1:nrow(data), y = x)) +
+  geom_point(size = 1, height = .5, width = .5, color = "red") +
+  xlab("days by row number") +
+ ylab("wt_rain Values Present or Missing") +
+ labs(title = "Scatter Plot of Missing wt_rain Values", size = 10) +
+ scale_y_discrete(labels = c("Present", "Missing")) +
+ scale_x_continuous(breaks = seq(0, nrow(data), by = 100)) +
+ theme(axis.text.x = element_text(angle = 90, hjust  = 1)) + 
+ theme_classic()
+gg
+
+```
+
+# VAR Model
+
+```{r}
+no_missing_values = apply(BikeSharing, 2, function(x) all(complete.cases(x)))
+columns_no_missing = names(BikeSharing)[no_missing_values]
+
+# All columns
+colnames(BikeSharing)
+# Columns with no missing values
+print(columns_no_missing)
+# date, total_cust, temp_min, temp_max, temp_observ, precip, wind
+```
+
+```{r}
+data <- data.frame(x = is.na(BikeSharing$wt_rain))
+
+gg <- ggplot(data, aes(x = 1:nrow(data), y = x)) +
+  geom_point(size = 1, height = .5, width = .5, color = "red") +
+  xlab("days by row number") +
+ ylab("wt_rain Values Present or Missing") +
+ labs(title = "Scatter Plot of Missing wt_rain Values", size = 10) +
+ scale_y_discrete(labels = c("Present", "Missing")) +
+ scale_x_continuous(breaks = seq(0, nrow(data), by = 100)) +
+ theme(axis.text.x = element_text(angle = 90, hjust  = 1)) + 
+ theme_classic()
+gg
+```
+
+```{r}
+# Select columns with no missing values excluding 'date' and 'precip_L1'
+variables = c("total_cust", "temp_min", "temp_max", "temp_observ", "precip", "wind", "holiday")
+BikeSharingSelected = BikeSharing[variables]
+
+# Leave out the last 182 values for the ASE calculation
+BikeSharingSmall = head(BikeSharingSelected, -182)
+
+# Prepare the data for the VAR model
+BikeSharingDF = data.frame(BikeSharingSmall[,-1]) # Exclude 'total_cust' for independent variables
+TotalCust = BikeSharingSmall$total_cust
+```
+
+```{r}
+# Double check we have all the dependent variables correctly saved to the dataframe
+head(BikeSharingDF)
+```
+
+```{r}
+VAR_Select_Bikeshare = VARselect(cbind(TotalCust, BikeSharingDF),lag.max = 10, type = "both")
+VAR_Select_Bikeshare
+```
+
+```{r}
+# Create the VAR model
+VAR_BikeSharing = VAR(cbind(TotalCust, BikeSharingDF), lag.max = 10, type = "both", p = 9)
+
+# Prediction
+pred_VAR_7 = predict(VAR_BikeSharing, n.ahead = 7)
+pred_VAR_182 = predict(VAR_BikeSharing, n.ahead = 182)
+```
+
+```{r}
+# Plot the actual vs predicted 'total_cust'
+plot(BikeSharing$total_cust, type = "l", main = "Total Customers: Actual vs Predicted 1 Week Forecast VAR", xlab = "Time", ylab = "Total Customers", xlim = c(2800, nrow(BikeSharing)))
+lines((nrow(BikeSharing) - 6):nrow(BikeSharing), pred_VAR_7$fcst$TotalCust[,1], col = "red")
+```
+
+```{r}
+# Plot the actual vs predicted 'total_cust' zoomed in on the last 1/6th of the timeline
+plot(BikeSharing$total_cust, type = "l", main = "Total Customers: Actual vs Predicted 26 Week Forecast VAR", xlab = "Time", ylab = "Total Customers", xlim = c(2500, nrow(BikeSharing)))
+lines((nrow(BikeSharing) - 181):nrow(BikeSharing), pred_VAR_182$fcst$TotalCust[,1], col = "red")
+```
+
+```{r}
+# Calculate the Average Squared Error (ASE) for the prediction
+ASE_VAR_7 = mean((tail(BikeSharing$total_cust, 7) - pred_VAR_7$fcst$TotalCust[,1])^2)
+print(ASE_VAR_7)
+
+ASE_VAR_182 = mean((tail(BikeSharing$total_cust, 182) - pred_VAR_182$fcst$TotalCust[,1])^2)
+print(ASE_VAR_182)
+```
+
+# MLP Model
+```{r}
+# Exclude the first 2,300 values from BikeSharingSmall and BikeSharingDF
+BikeSharingSmallAdjusted = BikeSharingSmall[-(1:2300), ]
+BikeSharingDFAdjusted = BikeSharingDF[-(1:2300), ]
+```
+
+```{r}
+fit_mlp = mlp(ts(BikeSharingSmallAdjusted$total_cust), reps = 7, comb = "median", xreg = BikeSharingDFAdjusted)
+plot(fit_mlp)
+```
+
+```{r}
+fore_mlp_182 = forecast(fit_mlp, h = 182, xreg = BikeSharingSelected[-(1:2300), -1])
+fore_mlp_7 = forecast(fit_mlp, h = 7, xreg = BikeSharingSelected[-(1:2300), -1])
+```
+
+```{r}
+plot(fore_mlp_182)
+```
+
+```{r}
+# Plot the actual 'total_cust' values
+plot(BikeSharing$total_cust, type = "l", main = "Total Customers: Actual vs Predicted 26 Week Forecast MLP", xlab = "Time", ylab = "Total Customers", xlim = c(2500, nrow(BikeSharing)))
+
+# Add the MLP forecasted 'total_cust' values
+lines((nrow(BikeSharing) - 181):nrow(BikeSharing), fore_mlp_182$mean, col = "red")
+```
+
+```{r}
+# Plot the actual 'total_cust' values
+plot(BikeSharing$total_cust, type = "l", main = "Total Customers: Actual vs Predicted 1 Week Forecast MLP", xlab = "Time", ylab = "Total Customers", xlim = c(2800, nrow(BikeSharing)))
+
+# Add the MLP forecasted 'total_cust' values
+lines((nrow(BikeSharing) - 6):nrow(BikeSharing), fore_mlp_7$mean, col = "red")
+```
+
+```{r}
+ASE_mlp_182 = mean((tail(BikeSharing$total_cust, 182) - fore_mlp_182$mean)^2)
+print(ASE_mlp_182)
+
+ASE_mlp_7 = mean((tail(BikeSharing$total_cust, 7) - fore_mlp_7$mean)^2)
+print(ASE_mlp_7)
+```
+
+# Ensemble
+
+```{r}
+fit_ar = est.ar.wge(BikeSharing$total_cust, p = 8)
+preds_ar_182 = fore.arma.wge(BikeSharing$total_cust,
+    phi = fit_ar$phi, n.ahead = 182,
+    lastn = TRUE, limits = FALSE)
+
+#Ensemble
+ensemble_182 = (pred_VAR_182$fcst$TotalCust[, 1] + fore_mlp_182$mean + preds_ar_182$f) / 3
+
+#Plot
+plot(BikeSharing$total_cust, type = "l", xlim = c(2500, nrow(BikeSharing)), ylab = "Total Customers", main = "Total Customers: Actual vs Predicted 26 Week Customer Forecast Ensemble")
+lines((nrow(BikeSharing) - 181):nrow(BikeSharing), ensemble_182, type = "l", col = "red")
+
+ASE_ensemble_182 = mean((tail(BikeSharing$total_cust, 182) - ensemble_182)^2)
+ASE_ensemble_182
+```
+
+```{r}
+preds_ar_7 = fore.arma.wge(BikeSharing$total_cust,
+    phi = fit_ar$phi, n.ahead = 7,
+    lastn = TRUE, limits = FALSE)
+
+#Ensemble
+ensemble_7 = (pred_VAR_7$fcst$TotalCust[, 1] + fore_mlp_7$mean + preds_ar_7$f) / 3
+
+#Plot
+plot(BikeSharing$total_cust, type = "l", xlim = c(2800, nrow(BikeSharing)), ylab = "Total Customers", main = "Total Customers: Actual vs Predicted 1 Week Customer Forecast Ensemble")
+lines((nrow(BikeSharing) - 6):nrow(BikeSharing), ensemble_7, type = "l", col = "red")
+
+ASE_ensemble_7 = mean((tail(BikeSharing$total_cust, 7) - ensemble_7)^2)
+ASE_ensemble_7
+```
